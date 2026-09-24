@@ -24,6 +24,11 @@ public interface LeadRepository extends JpaRepository<Lead, UUID>, JpaSpecificat
     @EntityGraph(attributePaths = {"prospector", "prospector.user"})
     Optional<Lead> findWithProspectorById(UUID id);
 
+    /** Agendamento, remarcação, cancelamento e mudança de status serializados por Lead (D-073). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Lead l where l.id = :id")
+    Optional<Lead> findByIdForUpdate(@Param("id") UUID id);
+
     boolean existsByCpf(String cpf);
 
     boolean existsByCpfAndIdNot(String cpf, UUID id);

@@ -31,6 +31,13 @@ public class HttpBrowser {
         return send(builder, true);
     }
 
+    public HttpResponse<String> patch(String path, String json) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .header("Content-Type", "application/json")
+                .method("PATCH", json == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json));
+        return send(builder, true);
+    }
+
     public HttpResponse<String> upload(String path, String filename, byte[] content) throws Exception {
         String boundary = "----teste" + System.nanoTime();
         byte[] head = ("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename

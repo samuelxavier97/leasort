@@ -12,6 +12,7 @@ import com.resort.platform.leads.dto.LeadRequest;
 import com.resort.platform.leads.dto.LeadResponse;
 import com.resort.platform.prospectors.Prospector;
 import com.resort.platform.prospectors.ProspectorRepository;
+import com.resort.platform.visits.VisitService;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDate;
@@ -40,11 +41,13 @@ public class LeadService {
     private final LeadRepository leads;
     private final ProspectorRepository prospectors;
     private final AuditService audit;
+    private final VisitService visitService;
 
-    public LeadService(LeadRepository leads, ProspectorRepository prospectors, AuditService audit) {
+    public LeadService(LeadRepository leads, ProspectorRepository prospectors, AuditService audit, VisitService visitService) {
         this.leads = leads;
         this.prospectors = prospectors;
         this.audit = audit;
+        this.visitService = visitService;
     }
 
     @Transactional(readOnly = true)
@@ -96,10 +99,16 @@ public class LeadService {
     }
 
     public LeadResponse changeStatus(UUID id, LeadStatus target, Viewer viewer) {
+        // Trava o Lead antes de ler o status: um descarte concorrente com um agendamento ou cancelamento
+        // não pode trabalhar sobre um estado obsoleto nem deixar visita agendada órfã (D-077).
+        leads.findByIdForUpdate(id);
         Lead lead = findAccessible(id, viewer);
         LeadStatus from = lead.getStatus();
         LeadStatusTransitions.check(from, target, viewer);
-        // D-040: a partir da Fase 4, o descarte também cancela a visita SCHEDULED e o convite ativo.
+        if (target == LeadStatus.CANCELLED) {
+            // D-040, D-063: o descarte cancela a visita agendada na mesma transação (convite: Fase 5).
+            visitService.cancelScheduledForDiscard(lead);
+        }
         lead.setStatus(target);
         audit.record(AuditAction.LEAD_STATUS_CHANGED, ENTITY_TYPE, id, Map.of("from", from.name(), "to", target.name()));
         return LeadResponse.of(lead, viewer);
