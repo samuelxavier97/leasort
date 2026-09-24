@@ -307,3 +307,10 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Contexto:** a Spring Security aplica autorização também ao dispatch interno de erro (`DispatcherType.ERROR`). Com a regra final `anyRequest().denyAll()` (D-055), o encaminhamento para `/error` seria negado, e um erro 500, ou um erro lançado por um filtro, chegaria ao cliente como 403.
 - **Decisão:** `dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` no `SecurityConfig`. A regra vale só para o dispatch interno de erro; nenhuma rota nova fica acessível por requisição direta.
 - **Impacto:** o status original do erro é preservado. A resposta continua em Problem Details, sem detalhes internos (`GlobalExceptionHandler` devolve `INTERNAL_ERROR` genérico).
+
+## D-059 — Prontidão da aplicação no healthcheck de produção (pendente, Fase 11)
+
+- **Status:** pendente; implementar na Fase 11.
+- **Contexto:** o `/actuator/health` responde `UP` assim que o servidor web sobe, antes de os `ApplicationRunner` terminarem, entre eles a criação do primeiro ADMIN (D-052). Na validação local de 2026-09-24, um login feito logo após o `UP` chegou 13 ms antes de o ADMIN existir e falhou. Os probes do Actuator foram desligados na Fase 1 porque, ligados, o `/actuator/health` passa a incluir `"groups":["liveness","readiness"]`, e a SPEC §11 define o endpoint público como "somente status".
+- **Decisão (direção):** religar o readiness probe do Actuator e usá-lo no healthcheck do Docker. O estado de readiness só passa a `ACCEPTING_TRAFFIC` depois dos `ApplicationRunner`, incluindo o bootstrap do ADMIN. O `/actuator/health` público continua devolvendo apenas `{"status":"UP"}`, sem `groups` nem componentes. Se ligar os probes expuser `groups` no endpoint público, o readiness fica acessível só internamente: pela porta de management ou restrito na configuração do Nginx.
+- **Impacto:** configuração do Actuator, healthcheck no `docker-compose.prod.yml` e testes que garantam readiness só depois do bootstrap e o endpoint público só com o status.
