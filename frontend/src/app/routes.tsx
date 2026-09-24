@@ -1,6 +1,8 @@
 import { Navigate, type RouteObject } from 'react-router'
 import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage'
 import { LoginPage } from '@/features/auth/LoginPage'
+import { InvitationPage } from '@/features/invitations/InvitationPage'
+import { InvitationsPage } from '@/features/invitations/InvitationsPage'
 import { ImportLeadsPage } from '@/features/leads/ImportLeadsPage'
 import { LeadDetailPage } from '@/features/leads/LeadDetailPage'
 import { LeadsPage } from '@/features/leads/LeadsPage'
@@ -30,6 +32,8 @@ export const routes: RouteObject[] = [
               { path: '/leads', element: <LeadsPage /> },
               { path: '/leads/:id', element: <LeadDetailPage /> },
               { path: '/visitas/:id', element: <VisitDetailPage /> },
+              { path: '/convites', element: <InvitationsPage /> },
+              { path: '/convites/:id', element: <InvitationPage /> },
             ],
           },
           {

@@ -34,6 +34,9 @@ const MESSAGES: Record<string, string> = {
   VISIT_NOT_EDITABLE: 'Esta visita não pode mais ser alterada.',
   COMPANION_NOT_FOUND: 'Um dos acompanhantes não pertence mais a esta visita. Recarregue a página.',
   INVALID_VISIT_TRANSITION: 'Esta ação não é permitida para a situação atual da visita.',
+  INVITATION_NOT_FOUND: 'Convite não encontrado.',
+  INVITATION_NOT_ACTIVE: 'Este convite não está mais ativo.',
+  INVITATION_CODE_CONFLICT: 'Não foi possível gerar o código do convite. Tente novamente.',
   NOT_FOUND: 'Recurso não encontrado.',
 }
 

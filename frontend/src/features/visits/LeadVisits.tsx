@@ -37,6 +37,7 @@ export function LeadVisits({ leadId }: { leadId: string }) {
                 <TableHead>Data</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Prospector</TableHead>
+                <TableHead>Convite</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -53,6 +54,13 @@ export function LeadVisits({ leadId }: { leadId: string }) {
                     </Badge>
                   </TableCell>
                   <TableCell>{visit.prospector.name}</TableCell>
+                  <TableCell>
+                    {visit.invitation?.status === 'ACTIVE' && (
+                      <Link className="underline" to={`/convites/${visit.invitation.id}`}>
+                        Ver convite
+                      </Link>
+                    )}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

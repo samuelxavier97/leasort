@@ -8,14 +8,14 @@ const cases: { role: Role; landing: string; heading: string; links: string[] }[]
     role: 'ADMIN',
     landing: '/dashboard',
     heading: 'Dashboard',
-    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Usuários'],
+    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Usuários'],
   },
-    // W8: §16.1 — o PROSPECTOR ganha Agenda e Histórico; o ADMIN ganha Visitas.
+    // W8 e C11: §16.1 — o PROSPECTOR ganha Agenda, Convites e Histórico; o ADMIN ganha Visitas e Convites.
   {
     role: 'PROSPECTOR',
     landing: '/dashboard',
     heading: 'Dashboard',
-    links: ['Dashboard', 'Meus Leads', 'Agenda', 'Histórico', 'Perfil'],
+    links: ['Dashboard', 'Meus Leads', 'Agenda', 'Convites', 'Histórico', 'Perfil'],
   },
   { role: 'GATE', landing: '/portaria', heading: 'Validar Convite', links: ['Validar Convite'] },
   { role: 'HOST', landing: '/chegadas', heading: 'Chegadas de hoje', links: ['Chegadas de hoje'] },
@@ -51,6 +51,13 @@ describe('página inicial e menu por perfil', () => {
     const { router } = renderApp('/visitas')
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'))
+  })
+
+  it.each(['GATE', 'HOST'] as Role[])('%s não acessa convites', async (role) => {
+    mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me(role) } : undefined))
+    const { router } = renderApp('/convites/i-1')
+
+    await waitFor(() => expect(router.state.location.pathname).not.toBe('/convites/i-1'))
   })
 
   it.each(['GATE', 'HOST'] as Role[])('%s não acessa visitas', async (role) => {

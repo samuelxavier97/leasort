@@ -9,6 +9,8 @@ import type { Me, Role } from '@/features/auth/types'
 export interface MockResponse {
   status?: number
   body?: unknown
+  /** Corpo binário (ex.: PNG), enviado sem JSON. */
+  raw?: { bytes: Uint8Array<ArrayBuffer>; type: string }
 }
 
 export type Handler = (method: string, url: string, body: unknown) => MockResponse | undefined
@@ -21,6 +23,9 @@ export function mockFetch(handler: Handler) {
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined
     const result = handler(method, url, body) ?? { status: 404, body: { code: 'NOT_MOCKED', detail: `${method} ${url}` } }
     const status = result.status ?? 200
+    if (result.raw) {
+      return new Response(result.raw.bytes, { status, headers: { 'Content-Type': result.raw.type } })
+    }
     return new Response(status === 204 || result.body === undefined ? null : JSON.stringify(result.body), {
       status,
       headers: { 'Content-Type': 'application/json' },
@@ -37,6 +42,11 @@ export const unauthenticated: MockResponse = {
 
 export function me(role: Role, overrides: Partial<Me> = {}): Me {
   return { id: `id-${role}`, name: `Usuário ${role}`, email: `${role.toLowerCase()}@resort.local`, role, mustChangePassword: false, ...overrides }
+}
+
+/** PNG fictício (só a assinatura do formato) para respostas de QR. */
+export function png(): MockResponse {
+  return { raw: { bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]), type: 'image/png' } }
 }
 
 export function problem(status: number, code: string, detail = 'erro'): MockResponse {

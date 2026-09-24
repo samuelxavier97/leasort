@@ -451,3 +451,10 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-086 — Convite na resposta da visita e da API de convites
 
 - **Decisão:** `VisitResponse.invitation` traz só `{id, status}` do convite atual (o `ACTIVE` ou, sem ele, o mais recente); o código aparece apenas nas rotas de convite, para quem pode ler a visita (D-041). `InvitationResponse` traz `code`, `formattedCode`, status e datas, a visita (`scheduledDate`, `status`, `companionsCount`, `canEdit`), `lead {id, name, accessible}`, `prospector` e `canReissue` (escrita, convite `ACTIVE` e visita `SCHEDULED`). Nenhum CPF. Lista `GET /api/invitations` com `status`, `visitId`, `leadId`, `prospectorId` (só ADMIN) e `order`, na ordem da data da visita. Auditoria de convite leva só ids e motivo, nunca o código.
+
+## D-087 — Imagem de compartilhamento do convite e nome do Resort
+
+- **Decisão:** a imagem é montada no frontend em canvas (§13), com 1080 × 1440 px: nome do Resort, "Convite de visita", nome do Lead, "Visita em DD/MM/AAAA", o QR vindo da API, o código `ABCDE-FGHJK` e a instrução "Apresente este código na portaria" (pedido na aprovação da Fase 5). Nada de CPF, telefone, e-mail, acompanhantes ou Prospector. O arquivo se chama `convite-ABCDE-FGHJK.png`. "Compartilhar" usa a Web Share API com arquivo quando `navigator.canShare({ files })` aceita; senão, baixa. "Baixar" sempre baixa. Cancelar o compartilhamento não é erro.
+- **Nome do Resort:** constante única `RESORT_NAME` em `frontend/src/lib/resort.ts`, como o fuso da D-080. O valor atual é o genérico "Resort"; o nome oficial entra nessa constante quando for definido, sem outra mudança.
+- **Descartado:** variável de ambiente ou endpoint de configuração só para o nome; nenhum ganho para um texto fixo da operação.
+- **Navegação (confirmado na aprovação):** depois de agendar, remarcar ou reemitir, a tela abre o convite novo, porque o código novo precisa ser compartilhado.

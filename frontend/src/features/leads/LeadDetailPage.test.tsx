@@ -115,8 +115,14 @@ describe('LeadDetailPage', () => {
           requested.push(url)
           return {
             body: page([
-              fakeVisit({ id: 'v-2', scheduledDate: '2026-10-10', status: 'SCHEDULED' }),
-              fakeVisit({ id: 'v-1', scheduledDate: '2026-09-28', status: 'CANCELLED', canEdit: false }),
+              fakeVisit({ id: 'v-2', scheduledDate: '2026-10-10', status: 'SCHEDULED', invitation: { id: 'i-2', status: 'ACTIVE' } }),
+              fakeVisit({
+                id: 'v-1',
+                scheduledDate: '2026-09-28',
+                status: 'CANCELLED',
+                canEdit: false,
+                invitation: { id: 'i-1', status: 'CANCELLED' },
+              }),
             ]),
           }
         }
@@ -126,9 +132,12 @@ describe('LeadDetailPage', () => {
       const table = await screen.findByRole('table', { name: 'Histórico de visitas' })
       const rows = within(table).getAllByRole('row').slice(1)
       expect(rows.map((row) => row.textContent)).toEqual([
-        '10/10/2026AgendadaProspector Fictício',
+        '10/10/2026AgendadaProspector FictícioVer convite',
         '28/09/2026CanceladaProspector Fictício',
       ])
+      // C10 (§16.2): "Ver convite" só na visita com convite ativo.
+      expect(within(rows[0]).getByRole('link', { name: 'Ver convite' })).toHaveAttribute('href', '/convites/i-2')
+      expect(within(rows[1]).queryByRole('link', { name: 'Ver convite' })).not.toBeInTheDocument()
       expect(within(rows[0]).getByRole('link', { name: '10/10/2026' })).toHaveAttribute('href', '/visitas/v-2')
       expect(requested).toEqual(['/api/visits?page=0&leadId=lead-1&order=desc'])
     })

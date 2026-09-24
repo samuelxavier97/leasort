@@ -38,6 +38,8 @@ export interface Visit {
   updatedAt: string
   /** Calculado no backend: escrita permitida e visita `SCHEDULED` (D-078). */
   canEdit: boolean
+  /** Convite atual, sem o código (D-086); `null` em visita anterior aos convites (D-071). */
+  invitation: { id: string; status: 'ACTIVE' | 'USED' | 'CANCELLED' | 'EXPIRED' } | null
 }
 
 export interface CompanionInput {

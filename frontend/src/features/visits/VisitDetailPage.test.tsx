@@ -5,7 +5,8 @@ import type { Role } from '@/features/auth/types'
 import type { Visit } from './api'
 import { fakeCpf } from '@/test/fakeCpf'
 import { page } from '@/test/leadFixtures'
-import { me, mockFetch, problem, renderApp, type Handler } from '@/test/utils'
+import { me, mockFetch, png, problem, renderApp, type Handler } from '@/test/utils'
+import { fakeInvitation } from '@/test/invitationFixtures'
 import { fakeCompanion, fakeVisit } from '@/test/visitFixtures'
 
 // Hoje = 24/09/2026 no fuso da operação; limite de data 24/09/2027.
@@ -88,6 +89,24 @@ describe('W4 — ações do detalhe da visita dependem de canEdit (D-078)', () =
     renderApp('/visitas/v-9')
 
     expect(await screen.findByText('Visita não encontrada.')).toBeInTheDocument()
+  })
+})
+
+describe('C10 — convite a partir da visita', () => {
+  it('visita com convite mostra "Ver convite"', async () => {
+    mockVisit('PROSPECTOR', fakeVisit({ invitation: { id: 'i-7', status: 'ACTIVE' } }))
+    renderApp('/visitas/v-1')
+
+    expect(await screen.findByRole('link', { name: 'Ver convite' })).toHaveAttribute('href', '/convites/i-7')
+  })
+
+  it('visita anterior aos convites (D-071) mostra o aviso e não o link', async () => {
+    mockVisit('PROSPECTOR', fakeVisit({ invitation: null }))
+    renderApp('/visitas/v-1')
+
+    expect(await screen.findByText('Esta visita foi criada antes dos convites. Remarque-a para gerar um convite.')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Ver convite' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remarcar' })).toBeInTheDocument()
   })
 })
 
@@ -221,9 +240,15 @@ describe('W6 — remarcar', () => {
   function setup(onReschedule: Handler) {
     mockVisit('PROSPECTOR', fakeVisit({ companions: [fakeCompanion()] }), (method, url, body) => {
       if (method === 'POST' && url === '/api/visits/v-1/reschedule') return onReschedule(method, url, body)
-      if (method === 'GET' && url === '/api/visits/v-2') {
-        return { body: fakeVisit({ id: 'v-2', scheduledDate: '2026-10-15', companions: [fakeCompanion({ id: 'c-9' })] }) }
+      if (method === 'GET' && url === '/api/invitations/i-2') {
+        return {
+          body: fakeInvitation({
+            id: 'i-2',
+            visit: { id: 'v-2', scheduledDate: '2026-10-15', status: 'SCHEDULED', companionsCount: 1, canEdit: true },
+          }),
+        }
       }
+      if (method === 'GET' && url === '/api/invitations/i-2/qr-code') return png()
     })
   }
 
@@ -265,20 +290,21 @@ describe('W6 — remarcar', () => {
     expect(sent).toHaveLength(0)
   })
 
-  it('depois do envio, a tela abre a nova visita', async () => {
+  it('C9: depois do envio, a tela abre o novo convite, porque o código novo precisa ser compartilhado', async () => {
     let sent: unknown
     setup((_m, _u, body) => {
       sent = body
-      return { body: fakeVisit({ id: 'v-2', scheduledDate: '2026-10-15' }) }
+      return { body: fakeVisit({ id: 'v-2', scheduledDate: '2026-10-15', invitation: { id: 'i-2', status: 'ACTIVE' } }) }
     })
     const { setDate, submit, router } = await openDialog()
 
     setDate('2026-10-15')
     await submit()
 
-    await waitFor(() => expect(router.state.location.pathname).toBe('/visitas/v-2'))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/convites/i-2'))
     expect(sent).toEqual({ scheduledDate: '2026-10-15' })
-    expect(await screen.findByRole('heading', { name: 'Visita de 15/10/2026' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Convite' })).toBeInTheDocument()
+    expect(screen.getByText('15/10/2026')).toBeInTheDocument()
   })
 
   it.each([
