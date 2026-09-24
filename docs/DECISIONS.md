@@ -372,3 +372,43 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Contexto:** a D-061 impede o Prospector de usar a edição do próprio Lead como oráculo do CPF mascarado. Ainda assim, a máscara `***.456.789-**` deixa só os 3 primeiros dígitos desconhecidos (1.000 candidatos, com os verificadores calculáveis). O Prospector pode informar cada candidato em Leads **da própria carteira sem CPF**: o candidato certo responde `409 CPF_ALREADY_EXISTS`, o que confirma o CPF completo do Lead A.
 - **Por que é aceito:** o ataque é pouco prático. Cada tentativa errada é aceita, grava o CPF no Lead de teste e o consome, porque o Prospector não pode alterar nem remover um CPF (D-061); seriam necessários até ~1.000 Leads sem CPF na carteira. Cada tentativa gera `LEAD_UPDATED` na auditoria, e o volume anormal fica visível.
 - **Mitigação futura, não implementada:** limitar a quantidade de CPFs que um Prospector pode informar por período (por exemplo, N por dia), com resposta 429 e auditoria ao atingir o limite.
+
+## D-071 — RN06 (convite na mesma transação) a partir da Fase 5
+
+- **Contexto:** a RN06 exige o convite criado na mesma transação da visita, mas convites são da Fase 5.
+- **Decisão:** na Fase 4 a visita é criada sem convite. A Fase 5 insere o convite dentro das mesmas transações de criação e remarcação, e o cancelamento do convite dentro das transações de cancelamento, remarcação e descarte do Lead. A Fase 5 terá teste de que toda visita `SCHEDULED` tem exatamente um convite `ACTIVE` e de que o rollback da visita desfaz o convite. Não há criação retroativa de convites: bancos de desenvolvimento da Fase 4 são recriados (`docker compose down -v`).
+- **Descartado:** tabela de convites parcial na Fase 4; anteciparia código, QR e reemissão sem os testes e telas da Fase 5.
+- **Motivo:** o sistema só vai para produção na Fase 11; nenhum dado real fica com visita sem convite.
+
+## D-072 — Acesso a visitas
+
+- **Decisão:** segue a D-041. Leitura: ADMIN, ou PROSPECTOR responsável pela visita (`visits.prospector_id`) ou dono atual do Lead; a lista do PROSPECTOR contém exatamente essas visitas. Escrita (editar, remarcar, cancelar): ADMIN ou dono atual do Lead. Sem permissão, 404 `VISIT_NOT_FOUND` com o mesmo corpo de um id inexistente, **inclusive para quem pode ler e tenta escrever** (confirmado na aprovação da Fase 4).
+
+## D-073 — Regras de criação de visita
+
+- **Decisão:** a criação trava a linha do Lead (`SELECT … FOR UPDATE`). Ordem das verificações: sem acesso de escrita, 404 `LEAD_NOT_FOUND`; Lead `CANCELLED`, 409 `LEAD_INACTIVE` (RN01); sem Prospector, 409 `LEAD_NOT_ASSIGNED` (RN03); dono inativo, 409 `PROSPECTOR_INACTIVE` (o ADMIN reatribui antes); visita já agendada, 409 `VISIT_ALREADY_SCHEDULED` (RN04). `visits.prospector_id` recebe o dono atual do Lead. O índice parcial `visits_lead_scheduled_uk` é o último seguro e também vira 409 `VISIT_ALREADY_SCHEDULED`.
+- **Ordem de lock:** toda escrita de visita e toda mudança de status do Lead trava o Lead **antes** de ler o estado da visita. Assim quem esperou o lock lê o estado já confirmado pela transação concorrente (evita, por exemplo, um cancelamento que desfaria um descarte).
+
+## D-074 — Data da visita
+
+- **Decisão:** "hoje" é sempre calculado por `BusinessCalendar` em `APP_TIMEZONE`, com `Clock` injetável (substituído nos testes). A data da visita, na criação e na remarcação, vai de hoje até **12 meses a partir de hoje, inclusive** (`today.plusMonths(12)`). Antes de hoje: 400 `SCHEDULED_DATE_IN_PAST`; depois do limite: 400 `SCHEDULED_DATE_TOO_FAR`.
+- **Motivo do limite:** uma data digitada errada travaria o Lead, já que só existe uma visita agendada por vez (confirmado na aprovação da Fase 4).
+
+## D-075 — Acompanhantes
+
+- **Decisão:** no máximo `APP_MAX_COMPANIONS` (400 `TOO_MANY_COMPANIONS`, com o limite na mensagem; o frontend não fixa o número). Nome, nascimento (não futuro, a partir de 1900) e parentesco obrigatórios; CPF opcional, validado, não único. Editáveis só com a visita `SCHEDULED` (409 `VISIT_NOT_EDITABLE`), inclusive depois da data enquanto não houver entrada (D-043).
+- **Lista no `PUT`:** substitui a atual casando por `id`: com `id` desta visita, atualiza e mantém o id (a Fase 6 registra presença por ele); sem `id`, cria; ausente, remove; `id` de outra visita, 400 `COMPANION_NOT_FOUND`.
+- **CPF:** mascarado para quem não é ADMIN (D-060); `null` mantém, `""` remove (só ADMIN); qualquer CPF enviado pelo PROSPECTOR para acompanhante que já tem CPF, mesmo igual, retorna 409 `CPF_CHANGE_NOT_ALLOWED` (mesma proteção da D-061). Como o CPF de acompanhante não é único, não há o risco residual da D-070.
+- **Auditoria:** `VISIT_UPDATED` com `changedFields` e contagens; nunca nome nem CPF.
+
+## D-076 — Remarcação
+
+- **Decisão:** só visita `SCHEDULED` (409 `INVALID_VISIT_TRANSITION`); a nova data segue a D-074 e não pode ser igual à atual (400 `SAME_DATE`; troca de código é papel da reemissão, Fase 5). Na mesma transação: a visita antiga vira `CANCELLED` com `cancelled_at` e é gravada antes da nova (o índice parcial exige); a nova nasce `SCHEDULED` com cópias de `notes`, `host_notes` e dos acompanhantes como registros novos (D-039), e com o dono atual do Lead como responsável (RN03). O Lead continua `VISIT_SCHEDULED`. Auditoria: `VISIT_RESCHEDULED` na antiga (`newVisitId`) e `VISIT_CREATED` na nova (`rescheduledFrom`).
+
+## D-077 — Cancelamento de visita e descarte do Lead
+
+- **Decisão:** cancelar leva a visita a `CANCELLED` (com `cancelled_at`) e o Lead de `VISIT_SCHEDULED` a `CONTACTED`, com `VISIT_CANCELLED` e `LEAD_STATUS_CHANGED` (`cause: VISIT_CANCELLED`). O descarte do Lead cancela a visita `SCHEDULED` na mesma transação, com `VISIT_CANCELLED` (`reason: LEAD_DISCARDED`); visitas passadas não mudam. Reativar o Lead não restaura visitas. Concorrência entre descarte, agendamento e cancelamento é resolvida pela ordem de lock da D-073 e coberta por testes em HTTP real.
+
+## D-078 — `canEdit` e ficha da visita
+
+- **Decisão:** a resposta da visita traz `canEdit`, calculado no backend para quem vê (escrita permitida e visita `SCHEDULED`). Serve só para a interface; o backend valida toda escrita. A ficha (`GET /api/visits/{id}/sheet`) fica para a Fase 7.

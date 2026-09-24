@@ -1,8 +1,10 @@
 package com.resort.platform;
 
+import com.resort.platform.common.BusinessCalendar;
 import com.resort.platform.prospectors.Prospector;
 import com.resort.platform.users.Role;
 import com.resort.platform.users.User;
+import org.junit.jupiter.api.AfterEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -34,6 +36,17 @@ public abstract class IntegrationTestSupport {
 
     @Autowired
     protected JsonMapper jsonMapper;
+
+    @Autowired
+    protected MutableClock clock;
+
+    @Autowired
+    protected BusinessCalendar calendar;
+
+    @AfterEach
+    void resetClock() {
+        clock.reset();
+    }
 
     /** Novo "navegador" sem cookies. */
     protected ApiClient client() {

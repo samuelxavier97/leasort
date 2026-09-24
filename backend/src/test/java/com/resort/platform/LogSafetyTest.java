@@ -88,4 +88,32 @@ class LogSafetyTest extends IntegrationTestSupport {
             assertThat(output.getAll()).doesNotContain(cpf).doesNotContain(FakeCpf.formatted(cpf));
         }
     }
+
+    @Test
+    void companionCpfNeverReachesTheLogs(CapturedOutput output) throws Exception {
+        ProspectorSession me = loggedInProspector();
+        String cpf = FakeCpf.generate();
+        String other = FakeCpf.generate();
+        String invalid = FakeCpf.invalid();
+        String leadId = testData.lead(me.prospector()).getId().toString();
+        Map<String, Object> companion = new java.util.HashMap<>(Map.of(
+                "name", "Acompanhante", "cpf", cpf, "birthDate", "2001-01-01", "relationship", "SPOUSE"));
+
+        String visit = me.client().post("/api/visits", Map.of("leadId", leadId,
+                        "scheduledDate", calendar.today().plusDays(1).toString(), "companions", List.of(companion)))
+                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();
+        var node = jsonMapper.readTree(visit);
+        String id = node.get("id").asString();
+        companion.put("id", node.get("companions").get(0).get("id").asString());
+        companion.put("cpf", other);
+        me.client().put("/api/visits/" + id, Map.of("companions", List.of(companion))).andExpect(status().isConflict());
+        companion.put("cpf", invalid);
+        me.client().put("/api/visits/" + id, Map.of("companions", List.of(companion))).andExpect(status().isBadRequest());
+        me.client().post("/api/visits/" + id + "/reschedule",
+                Map.of("scheduledDate", calendar.today().plusDays(2).toString())).andExpect(status().isOk());
+
+        for (String value : List.of(cpf, other, invalid)) {
+            assertThat(output.getAll()).doesNotContain(value).doesNotContain(FakeCpf.formatted(value));
+        }
+    }
 }

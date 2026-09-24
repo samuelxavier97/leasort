@@ -27,7 +27,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     private static final Map<String, String> UNIQUE_CONSTRAINTS = Map.of(
             "users_email_uk", "EMAIL_ALREADY_EXISTS",
             "prospectors_employee_code_uk", "EMPLOYEE_CODE_ALREADY_EXISTS",
-            "leads_cpf_uk", "CPF_ALREADY_EXISTS");
+            "leads_cpf_uk", "CPF_ALREADY_EXISTS",
+            "visits_lead_scheduled_uk", "VISIT_ALREADY_SCHEDULED");
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ProblemDetail> handleApiException(ApiException ex) {

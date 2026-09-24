@@ -38,6 +38,8 @@ server:
         same-site: lax
 
 app:
+  timezone: ${APP_TIMEZONE:America/Sao_Paulo}
+  max-companions: ${APP_MAX_COMPANIONS:6}
   bootstrap-admin:
     email: ${APP_BOOTSTRAP_ADMIN_EMAIL:}
     password: ${APP_BOOTSTRAP_ADMIN_PASSWORD:}
