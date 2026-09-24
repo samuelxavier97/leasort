@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router'
+import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { FormAlert } from '@/components/FormAlert'
@@ -8,11 +8,14 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useMe } from '@/features/auth/useMe'
+import { visitsQueryKey } from '@/features/visits/api'
+import { LeadVisits } from '@/features/visits/LeadVisits'
+import { ScheduleVisitDialog } from '@/features/visits/ScheduleVisitDialog'
 import { errorMessage } from '@/lib/errors'
 import { formatDate } from '@/lib/format'
 import { changeLeadStatus, getLead, leadsQueryKey, type Lead } from './api'
 import { LeadFormDialog } from './LeadFormDialog'
-import { LEAD_ACTIONS, LEAD_STATUS_LABELS, leadActions, type LeadAction } from './status'
+import { canScheduleVisit, LEAD_ACTIONS, LEAD_STATUS_LABELS, leadActions, type LeadAction } from './status'
 
 export function LeadDetailPage() {
   const { id = '' } = useParams()
@@ -20,6 +23,8 @@ export function LeadDetailPage() {
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState(false)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
+  const navigate = useNavigate()
 
   const lead = useQuery({ queryKey: [...leadsQueryKey, 'detail', id], queryFn: () => getLead(id) })
 
@@ -33,6 +38,8 @@ export function LeadDetailPage() {
     onSuccess: (updated) => {
       setConfirmDiscard(false)
       saved(updated)
+      // O descarte cancela a visita agendada (D-077).
+      queryClient.invalidateQueries({ queryKey: visitsQueryKey })
       toast.success(`Status alterado para ${LEAD_STATUS_LABELS[updated.status]}.`)
     },
     onError: () => setConfirmDiscard(false),
@@ -68,6 +75,9 @@ export function LeadDetailPage() {
       <FormAlert message={statusChange.isError ? errorMessage(statusChange.error) : null} />
 
       <div className="flex flex-wrap gap-2">
+        {canScheduleVisit(data.status, data.prospector !== null) && (
+          <Button onClick={() => setScheduling(true)}>Agendar visita</Button>
+        )}
         {actions.map((action) => (
           <Button
             key={action}
@@ -105,6 +115,20 @@ export function LeadDetailPage() {
         </CardContent>
       </Card>
 
+      <LeadVisits leadId={data.id} />
+
+      <ScheduleVisitDialog
+        open={scheduling}
+        lead={data}
+        onClose={() => setScheduling(false)}
+        onScheduled={(visit) => {
+          setScheduling(false)
+          queryClient.invalidateQueries({ queryKey: leadsQueryKey })
+          queryClient.invalidateQueries({ queryKey: visitsQueryKey })
+          toast.success('Visita agendada.')
+          navigate(`/visitas/${visit.id}`)
+        }}
+      />
       <LeadFormDialog
         open={editing}
         lead={data}

@@ -7,6 +7,8 @@ import { LeadsPage } from '@/features/leads/LeadsPage'
 import { ProfilePage } from '@/features/profile/ProfilePage'
 import { ProspectorsPage } from '@/features/prospectors/ProspectorsPage'
 import { UsersPage } from '@/features/users/UsersPage'
+import { VisitDetailPage } from '@/features/visits/VisitDetailPage'
+import { VisitsPage } from '@/features/visits/VisitsPage'
 import { AppLayout } from './AppLayout'
 import { ComingSoonPage } from './ComingSoonPage'
 import { HomeRedirect, RequireAuth, RequireRole } from './guards'
@@ -27,6 +29,7 @@ export const routes: RouteObject[] = [
               { path: '/dashboard', element: <ComingSoonPage title="Dashboard" /> },
               { path: '/leads', element: <LeadsPage /> },
               { path: '/leads/:id', element: <LeadDetailPage /> },
+              { path: '/visitas/:id', element: <VisitDetailPage /> },
             ],
           },
           {
@@ -43,11 +46,16 @@ export const routes: RouteObject[] = [
               { path: '/usuarios', element: <UsersPage /> },
               { path: '/leads/importar', element: <ImportLeadsPage /> },
               { path: '/prospectores', element: <ProspectorsPage /> },
+              { path: '/visitas', element: <VisitsPage key="all" view="all" /> },
             ],
           },
           {
             element: <RequireRole roles={['PROSPECTOR']} />,
-            children: [{ path: '/perfil', element: <ProfilePage /> }],
+            children: [
+              { path: '/agenda', element: <VisitsPage key="agenda" view="agenda" /> },
+              { path: '/historico', element: <VisitsPage key="history" view="history" /> },
+              { path: '/perfil', element: <ProfilePage /> },
+            ],
           },
         ],
       },

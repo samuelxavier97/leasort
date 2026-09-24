@@ -28,3 +28,11 @@ export function leadActions(status: LeadStatus, role: Role): LeadAction[] {
   if (status === 'CANCELLED' && role === 'ADMIN') actions.push('REACTIVATE')
   return actions
 }
+
+/**
+ * "Agendar visita" (§16.2): Lead ativo sem visita agendada (D-040) e atribuído a um Prospector (RN03).
+ * Quem abre o detalhe do Lead já pode escrever nele: ADMIN ou o dono atual (D-041).
+ */
+export function canScheduleVisit(status: LeadStatus, assigned: boolean): boolean {
+  return assigned && (status === 'NEW' || status === 'CONTACTED' || status === 'VISITED')
+}
