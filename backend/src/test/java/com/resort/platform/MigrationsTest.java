@@ -23,7 +23,7 @@ class MigrationsTest extends IntegrationTestSupport {
         assertThat(flyway.info().applied())
                 .extracting(MigrationInfo::getVersion)
                 .extracting(Object::toString)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
         assertThat(jdbc.sql("""
                         SELECT table_name FROM information_schema.tables
                         WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history'
@@ -213,6 +213,14 @@ class MigrationsTest extends IntegrationTestSupport {
         assertThatThrownBy(() -> insertAccess(invitation, gate, "DENIED", "LATE", false))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("access_records_denial_reason_ck");
+    }
+
+    /** H1: V9, índice parcial das chegadas por entry_at (D-095). */
+    @Test
+    void arrivalsIndexIsPartialOnAuthorizedEntries() {
+        String definition = jdbc.sql("SELECT indexdef FROM pg_indexes WHERE indexname = 'access_records_entry_at_ix'")
+                .query(String.class).single();
+        assertThat(definition).contains("(entry_at)").contains("WHERE").contains("'AUTHORIZED'");
     }
 
     private void insertAccess(UUID invitation, UUID user, String result, String reason, boolean entered) {

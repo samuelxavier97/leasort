@@ -16,6 +16,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -100,5 +101,9 @@ public class AccessRecord {
 
     public Instant getEntryAt() {
         return entryAt;
+    }
+
+    public Set<UUID> getPresentCompanionIds() {
+        return Collections.unmodifiableSet(presentCompanionIds);
     }
 }
