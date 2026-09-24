@@ -54,10 +54,10 @@ docs/  nginx/  docker-compose.yml  docker-compose.prod.yml  .env.example
 
 ## Comandos
 
-Requisitos: Java 21, Node 22+, Docker.
+Requisitos: JDK 21 ou mais recente (o build gera bytecode para Java 21; também roda com JDK 25), Node 22+, Docker.
 
 ```bash
-cp .env.example .env                   # opcional; sem .env o compose usa resort/resort
+cp .env.example .env                   # opcional; os valores de dev do .env.example são os mesmos do application-dev.yml
 docker compose up -d postgres          # banco de desenvolvimento (PostgreSQL 16)
 cd backend && ./mvnw spring-boot:run   # API em :8080, perfil dev (só o plugin ativa dev; D-037)
 cd backend && ./mvnw verify            # build + testes (Testcontainers; requer Docker)
@@ -73,6 +73,13 @@ Swagger (só no perfil dev, D-056): `http://localhost:8080/swagger-ui/index.html
 ADMIN inicial no dev: `admin@resort.local` / `admin-dev-password`, com troca obrigatória no primeiro acesso (D-052).
 O jar exige perfil explícito: `SPRING_PROFILES_ACTIVE=prod java -jar backend/target/platform-*.jar`.
 Playwright entra na Fase 10.
+
+## Problemas comuns
+
+- **`password authentication failed` ou conexão no banco errado (porta 5432 ocupada).** Um PostgreSQL instalado na máquina (comum no Windows) ocupa a porta 5432 e intercepta a conexão destinada ao container. Verifique com `Get-NetTCPConnection -LocalPort 5432` (PowerShell) ou `netstat -ano | findstr :5432`. Pare o serviço local (`Get-Service postgresql*` e `Stop-Service <nome>`, ou pelo `services.msc`) antes do `docker compose up -d postgres`, ou mude a porta do PostgreSQL local.
+- **PowerShell bloqueia o `npm` (`execução de scripts foi desabilitada neste sistema`).** A política de execução padrão impede o `npm.ps1`. Libere para o usuário atual com `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, ou chame `npm.cmd` no lugar de `npm`.
+- **`.env` alterado e o backend não conecta.** O backend não lê o `.env`; só o `docker-compose.yml` lê. Se mudar credenciais no `.env`, exporte as mesmas variáveis (`DB_URL`, `DB_USER`, `DB_PASSWORD`) no terminal do backend. Se o volume do banco já foi criado com outra senha, recrie com `docker compose down -v` (apaga os dados de desenvolvimento).
+- **No Windows, `./mvnw` e `./scripts/verify.sh`.** No PowerShell use `.\mvnw.cmd`; o `verify.sh` precisa de Git Bash ou WSL.
 
 ## Fluxo de trabalho
 
