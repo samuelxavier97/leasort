@@ -38,6 +38,8 @@ const MESSAGES: Record<string, string> = {
   INVITATION_NOT_ACTIVE: 'Este convite não está mais ativo.',
   INVITATION_CODE_CONFLICT: 'Não foi possível gerar o código do convite. Tente novamente.',
   TOO_MANY_VALIDATIONS: 'Muitas validações em pouco tempo. Aguarde um minuto e tente novamente.',
+  ARRIVALS_DATE_NOT_ALLOWED: 'O anfitrião só consulta as chegadas de hoje.',
+  VISIT_NOT_ARRIVED: 'Esta visita ainda não teve entrada registrada. A ficha fica disponível depois da entrada na Portaria.',
   NOT_FOUND: 'Recurso não encontrado.',
 }
 

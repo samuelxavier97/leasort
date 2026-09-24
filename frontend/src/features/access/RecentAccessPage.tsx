@@ -2,12 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useMe } from '@/features/auth/useMe'
-import { OPERATION_TIMEZONE } from '@/lib/date'
+import { formatOperationTime } from '@/lib/date'
 import { errorMessage } from '@/lib/errors'
 import { listRecentAccess, recentAccessQueryKey } from './api'
 import { ACCESS_RESULT_LABELS, DENIAL_REASON_LABELS } from './labels'
-
-const timeFormat = new Intl.DateTimeFormat('pt-BR', { timeZone: OPERATION_TIMEZONE, hour: '2-digit', minute: '2-digit' })
 
 /** Acessos de hoje, do mais recente ao mais antigo (D-092). GATE: "Acessos Recentes"; ADMIN: "Acessos". */
 export function RecentAccessPage() {
@@ -43,7 +41,7 @@ export function RecentAccessPage() {
             <TableBody>
               {recent.data.map((access) => (
                 <TableRow key={access.id}>
-                  <TableCell>{timeFormat.format(new Date(access.createdAt))}</TableCell>
+                  <TableCell>{formatOperationTime(access.createdAt)}</TableCell>
                   <TableCell>
                     <Badge variant={access.result === 'AUTHORIZED' ? 'secondary' : 'destructive'}>
                       {ACCESS_RESULT_LABELS[access.result]}

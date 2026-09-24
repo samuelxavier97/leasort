@@ -366,3 +366,20 @@ describe('W7 — cancelar', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Esta ação não é permitida para a situação atual da visita.')
   })
 })
+
+describe('F9 — "Ver ficha" só na visita COMPLETED', () => {
+  it.each(['ADMIN', 'PROSPECTOR'] as Role[])('%s vê "Ver ficha" na visita COMPLETED', async (role) => {
+    mockVisit(role, fakeVisit({ status: 'COMPLETED', canEdit: false }))
+    renderApp('/visitas/v-1')
+
+    expect(await screen.findByRole('link', { name: 'Ver ficha' })).toHaveAttribute('href', '/chegadas/v-1/ficha')
+  })
+
+  it.each(['SCHEDULED', 'CANCELLED', 'NO_SHOW'] as const)('visita %s não oferece a ficha', async (status) => {
+    mockVisit('ADMIN', fakeVisit({ status, canEdit: status === 'SCHEDULED' }))
+    renderApp('/visitas/v-1')
+
+    await screen.findByRole('heading', { level: 1 })
+    expect(screen.queryByRole('link', { name: 'Ver ficha' })).not.toBeInTheDocument()
+  })
+})
