@@ -314,3 +314,54 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Contexto:** o `/actuator/health` responde `UP` assim que o servidor web sobe, antes de os `ApplicationRunner` terminarem, entre eles a criação do primeiro ADMIN (D-052). Na validação local de 2026-09-24, um login feito logo após o `UP` chegou 13 ms antes de o ADMIN existir e falhou. Os probes do Actuator foram desligados na Fase 1 porque, ligados, o `/actuator/health` passa a incluir `"groups":["liveness","readiness"]`, e a SPEC §11 define o endpoint público como "somente status".
 - **Decisão (direção):** religar o readiness probe do Actuator e usá-lo no healthcheck do Docker. O estado de readiness só passa a `ACCEPTING_TRAFFIC` depois dos `ApplicationRunner`, incluindo o bootstrap do ADMIN. O `/actuator/health` público continua devolvendo apenas `{"status":"UP"}`, sem `groups` nem componentes. Se ligar os probes expuser `groups` no endpoint público, o readiness fica acessível só internamente: pela porta de management ou restrito na configuração do Nginx.
 - **Impacto:** configuração do Actuator, healthcheck no `docker-compose.prod.yml` e testes que garantam readiness só depois do bootstrap e o endpoint público só com o status.
+
+## D-060 — CPF na API conforme o perfil
+
+- **Decisão:** a resposta de Lead é montada por `LeadResponse.of(lead, viewer)`. O ADMIN recebe o CPF completo e formatado (`123.456.789-01`); o PROSPECTOR recebe `***.456.789-**` (SPEC §15). O valor completo nunca é serializado para o PROSPECTOR, em nenhuma resposta, inclusive as de erro.
+- **Impacto:** mensagens de erro e o `errors[]` de validação não repetem valores enviados; auditoria grava só `changedFields`.
+
+## D-061 — Escrita do CPF do Lead
+
+- **Decisão:** no `PUT`, `cpf` nulo ou ausente mantém o valor; `""` remove (só ADMIN). O PROSPECTOR só informa CPF quando o Lead não tem nenhum; não altera nem remove. Qualquer CPF enviado por ele para um Lead que já tem CPF retorna 409 `CPF_CHANGE_NOT_ALLOWED`, **mesmo que igual ao gravado**.
+- **Motivo:** a máscara revela 6 dígitos e os 2 verificadores são calculáveis; se o valor igual fosse aceito como "sem mudança", a resposta viraria um oráculo para descobrir o CPF completo em até 1.000 tentativas.
+- **Aceito:** o 409 `CPF_ALREADY_EXISTS` revela ao PROSPECTOR que o CPF existe em outro Lead; a resposta não traz nenhum dado desse Lead.
+
+## D-062 — Criação de Lead já atribuído
+
+- **Decisão:** `POST /api/leads` (ADMIN) aceita `prospectorId` opcional, que precisa existir e estar ativo. Auditoria `LEAD_CREATED` e, quando atribuído, `LEAD_ASSIGNED` com `fromProspectorId` nulo.
+
+## D-063 — Mudança manual de status do Lead
+
+- **Decisão:** `PATCH /api/leads/{id}/status` aceita `NEW → CONTACTED`, descarte (`NEW`, `CONTACTED`, `VISIT_SCHEDULED` ou `VISITED` → `CANCELLED`) e reativação (`CANCELLED → NEW`, só ADMIN). Qualquer outro par, inclusive o mesmo status e os destinos automáticos `VISIT_SCHEDULED` e `VISITED`, retorna 409 `INVALID_STATUS_TRANSITION`. Reativação pelo PROSPECTOR retorna 403 `ACCESS_DENIED`. O `PUT` não depende do status.
+- **Pendente (Fase 4):** o descarte passa a cancelar a visita `SCHEDULED` e o convite ativo na mesma transação (D-040).
+
+## D-064 — Atribuição em lote
+
+- **Decisão:** `PATCH /api/leads/assign` com 1 a 500 ids distintos e `prospectorId` obrigatório; sem "desatribuir" na V1. Atômica: id inexistente (404 `LEAD_NOT_FOUND`), Prospector inexistente (404) ou inativo (409 `PROSPECTOR_INACTIVE`) não alteram nada. Leads lidos com lock pessimista. Leads que já pertencem ao destino são ignorados. Auditoria `LEAD_ASSIGNED` por Lead, com `fromProspectorId` e `toProspectorId`. Leads `CANCELLED` podem ser atribuídos.
+
+## D-065 — Detalhes da importação CSV
+
+- **Decisão:** UTF-8 com ou sem BOM (outro encoding: 400 `INVALID_ENCODING`); separador `;`; aspas RFC 4180; cabeçalho com as 7 colunas em qualquer ordem, sem extras nem repetidas (400 `INVALID_HEADER`); linhas totalmente vazias ignoradas; até 5.000 linhas de dados (400 `TOO_MANY_ROWS`) e 5 MB (413 `FILE_TOO_LARGE`). CPF aceito com ou sem pontuação. Prospector inativo é erro próprio (`PROSPECTOR_INACTIVE`). Observações até 2.000 caracteres.
+- **Relatório:** 422 em Problem Details, `code = IMPORT_REJECTED`, `totalRows` e `errors[{line, column, code, message}]`, com a linha física do arquivo (cabeçalho = 1) e sem o conteúdo das células. Sucesso: 200 `{imported, totalRows}`.
+- **Auditoria:** um único `LEAD_IMPORTED` com `count` e `assignedCount`; não há `LEAD_CREATED` por linha.
+- **Parser:** leitor de CSV próprio (`CsvReader`), sem dependência nova.
+
+## D-066 — Busca e filtros de Leads
+
+- **Decisão:** `q` busca em nome, e-mail e telefone, sem diferenciar maiúsculas e sensível a acentos. Filtros `prospectorId`, `unassigned` e `cpf` (exato) valem só para o ADMIN; para o PROSPECTOR a lista é sempre a própria carteira e esses filtros são ignorados. Ordenação por nome.
+
+## D-067 — Normalização de campos do Lead
+
+- **Decisão:** e-mail gravado em minúsculas; data de nascimento não futura e a partir de 01/01/1900.
+
+## D-068 — Injeção de fórmula na exportação CSV (pendente, Fase 9)
+
+- **Status:** pendente; implementar na Fase 9.
+- **Contexto:** a importação aceita qualquer texto em nome, observações e demais campos, inclusive valores começando com `=`, `+`, `-`, `@`, tabulação ou retorno de carro. Abertos no Excel, esses valores podem ser interpretados como fórmula.
+- **Decisão:** toda exportação CSV neutraliza células que comecem com `=`, `+`, `-`, `@`, `\t` ou `\r` (prefixo `'` ou equivalente), com teste por caractere. A importação continua aceitando esses valores.
+
+## D-069 — Logs de erro SQL do Hibernate desligados
+
+- **Contexto:** o Hibernate 7 registra erros de SQL (loggers `org.hibernate.orm.jdbc.error` e `org.hibernate.engine.jdbc.spi.SqlExceptionHelper`) com os valores do comando e a chave violada, por exemplo `Key (cpf)=(...)`. Um teste de log flagrou o CPF na saída.
+- **Decisão:** os dois loggers ficam em `OFF`. As exceções continuam sendo lançadas e tratadas: violação de constraint vira 409; erro inesperado é registrado pelo `GlobalExceptionHandler`.
+- **Impacto:** diagnóstico de erro SQL passa a depender da exceção tratada, e não do log do Hibernate. O teste de log cobre a corrida que chega à constraint.

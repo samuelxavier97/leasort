@@ -20,6 +20,9 @@ public interface ProspectorRepository extends JpaRepository<Prospector, UUID> {
 
     Optional<Prospector> findByUserId(UUID userId);
 
+    @EntityGraph(attributePaths = "user")
+    List<Prospector> findByEmployeeCodeIn(Collection<String> employeeCodes);
+
     List<Prospector> findByUserIdIn(Collection<UUID> userIds);
 
     boolean existsByEmployeeCode(String employeeCode);

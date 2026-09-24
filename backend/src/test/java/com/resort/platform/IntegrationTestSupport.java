@@ -1,6 +1,8 @@
 package com.resort.platform;
 
+import com.resort.platform.prospectors.Prospector;
 import com.resort.platform.users.Role;
+import com.resort.platform.users.User;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -37,6 +39,14 @@ public abstract class IntegrationTestSupport {
     protected ApiClient client() {
         return new ApiClient(mockMvc, jsonMapper);
     }
+
+    /** Prospector novo, já autenticado. */
+    protected ProspectorSession loggedInProspector() throws Exception {
+        User user = testData.user(Role.PROSPECTOR);
+        return new ProspectorSession(client().login(user.getEmail(), TestData.PASSWORD), user, testData.prospectorOf(user));
+    }
+
+    protected record ProspectorSession(ApiClient client, User user, Prospector prospector) {}
 
     /** Navegador já autenticado como um novo usuário do perfil informado. */
     protected ApiClient loggedIn(Role role) throws Exception {

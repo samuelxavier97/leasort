@@ -9,6 +9,8 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+          batch_size: 100
+        order_inserts: true
   flyway:
     locations: classpath:db/migration
   mvc:
@@ -17,6 +19,10 @@ spring:
   session:
     jdbc:
       initialize-schema: never
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   data:
     web:
       pageable:
@@ -42,6 +48,13 @@ springdoc:
     enabled: false
   swagger-ui:
     enabled: false
+
+# Erros de SQL do Hibernate trazem os valores do comando e a chave violada (ex.: CPF); não podem ir
+# para o log (regra 5). O erro continua tratado e convertido em 409 pelo GlobalExceptionHandler.
+logging:
+  level:
+    org.hibernate.engine.jdbc.spi.SqlExceptionHelper: "OFF"
+    org.hibernate.orm.jdbc.error: "OFF"
 
 management:
   endpoints:

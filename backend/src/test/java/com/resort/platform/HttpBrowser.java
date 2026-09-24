@@ -31,6 +31,21 @@ public class HttpBrowser {
         return send(builder, true);
     }
 
+    public HttpResponse<String> upload(String path, String filename, byte[] content) throws Exception {
+        String boundary = "----teste" + System.nanoTime();
+        byte[] head = ("--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"" + filename
+                        + "\"\r\nContent-Type: text/csv\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] tail = ("\r\n--" + boundary + "--\r\n").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        byte[] body = new byte[head.length + content.length + tail.length];
+        System.arraycopy(head, 0, body, 0, head.length);
+        System.arraycopy(content, 0, body, head.length, content.length);
+        System.arraycopy(tail, 0, body, head.length + content.length, tail.length);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary)
+                .POST(HttpRequest.BodyPublishers.ofByteArray(body));
+        return send(builder, true);
+    }
+
     public String cookie(String name) {
         return cookies.get(name);
     }

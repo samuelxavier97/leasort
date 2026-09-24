@@ -46,6 +46,14 @@ class MustChangePasswordTest extends IntegrationTestSupport {
                 Arguments.of("GET", "/api/prospectors"),
                 Arguments.of("GET", "/api/prospectors/" + id),
                 Arguments.of("PUT", "/api/prospectors/" + id),
+                Arguments.of("GET", "/api/leads"),
+                Arguments.of("GET", "/api/leads/" + id),
+                Arguments.of("POST", "/api/leads"),
+                Arguments.of("PUT", "/api/leads/" + id),
+                Arguments.of("PATCH", "/api/leads/" + id + "/status"),
+                Arguments.of("PATCH", "/api/leads/assign"),
+                Arguments.of("POST", "/api/leads/import"),
+                Arguments.of("GET", "/api/leads/import/template"),
                 Arguments.of("GET", "/api/rota-inexistente"),
                 Arguments.of("POST", "/api/rota-inexistente"));
     }

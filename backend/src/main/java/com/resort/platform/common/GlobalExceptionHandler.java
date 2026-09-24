@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -25,7 +26,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     /** Constraints únicas que viram 409 quando a verificação prévia perde uma corrida. */
     private static final Map<String, String> UNIQUE_CONSTRAINTS = Map.of(
             "users_email_uk", "EMAIL_ALREADY_EXISTS",
-            "prospectors_employee_code_uk", "EMPLOYEE_CODE_ALREADY_EXISTS");
+            "prospectors_employee_code_uk", "EMPLOYEE_CODE_ALREADY_EXISTS",
+            "leads_cpf_uk", "CPF_ALREADY_EXISTS");
 
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ProblemDetail> handleApiException(ApiException ex) {
@@ -63,20 +65,25 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return ResponseEntity.badRequest().headers(headers).body(problem);
     }
 
-    /** Erros do próprio Spring MVC (404, 405, JSON malformado...) recebem um {@code code} pelo status. */
+    /**
+     * Erros do próprio Spring MVC (404, 405, 413, JSON malformado...) recebem um {@code code} pelo status.
+     * Para essas exceções o corpo chega nulo aqui e o Spring o monta a partir de {@link ErrorResponse}.
+     */
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
             Exception ex, Object body, HttpHeaders headers, HttpStatusCode statusCode, WebRequest request) {
-        if (body instanceof ProblemDetail problem
+        Object resolved = body == null && ex instanceof ErrorResponse errorResponse ? errorResponse.getBody() : body;
+        if (resolved instanceof ProblemDetail problem
                 && (problem.getProperties() == null || !problem.getProperties().containsKey("code"))) {
             problem.setProperty("code", switch (statusCode.value()) {
                 case 400 -> "BAD_REQUEST";
                 case 404 -> "NOT_FOUND";
                 case 405 -> "METHOD_NOT_ALLOWED";
+                case 413 -> "FILE_TOO_LARGE";
                 case 415 -> "UNSUPPORTED_MEDIA_TYPE";
                 default -> "ERROR";
             });
         }
-        return super.handleExceptionInternal(ex, body, headers, statusCode, request);
+        return super.handleExceptionInternal(ex, resolved, headers, statusCode, request);
     }
 }

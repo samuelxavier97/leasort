@@ -7,8 +7,10 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.test.web.servlet.request.AbstractMockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import tools.jackson.databind.json.JsonMapper;
@@ -55,6 +57,12 @@ public class ApiClient {
         return perform(withBody(MockMvcRequestBuilders.patch(path), body), true);
     }
 
+    /** Upload multipart no campo {@code file}, com o mesmo CSRF das demais escritas. */
+    public ResultActions upload(String path, String filename, byte[] content) throws Exception {
+        return perform(MockMvcRequestBuilders.multipart(path)
+                .file(new MockMultipartFile("file", filename, "text/csv", content)), true);
+    }
+
     public String cookie(String name) {
         return cookies.get(name);
     }
@@ -74,7 +82,7 @@ public class ApiClient {
         return builder.contentType(MediaType.APPLICATION_JSON).content(jsonMapper.writeValueAsString(body));
     }
 
-    private ResultActions perform(MockHttpServletRequestBuilder builder, boolean unsafe) throws Exception {
+    private ResultActions perform(AbstractMockHttpServletRequestBuilder<?> builder, boolean unsafe) throws Exception {
         if (unsafe && !cookies.containsKey("XSRF-TOKEN")) {
             // Como o frontend: um GET inicial entrega o cookie CSRF (D-054).
             get("/api/auth/me");
