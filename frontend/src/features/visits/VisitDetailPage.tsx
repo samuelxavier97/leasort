@@ -78,6 +78,19 @@ export function VisitDetailPage() {
 
       <FormAlert message={cancel.isError ? errorMessage(cancel.error) : null} />
 
+      {data.invitation ? (
+        <Button variant="outline" asChild>
+          <Link to={`/convites/${data.invitation.id}`}>Ver convite</Link>
+        </Button>
+      ) : (
+        data.status === 'SCHEDULED' && (
+          // Visita anterior aos convites (D-071): a remarcação gera o convite da nova visita.
+          <p className="rounded-md border p-3 text-sm text-muted-foreground">
+            Esta visita foi criada antes dos convites. Remarque-a para gerar um convite.
+          </p>
+        )
+      )}
+
       {/* As ações dependem só de canEdit, que o backend já calcula como escrita permitida e visita SCHEDULED (D-078). */}
       {data.canEdit && (
         <div className="flex flex-wrap gap-2">
@@ -171,7 +184,8 @@ export function VisitDetailPage() {
               queryClient.invalidateQueries({ queryKey: detailKey })
               refreshRelated()
               toast.success(`Visita remarcada para ${formatDate(created.scheduledDate)}.`)
-              navigate(`/visitas/${created.id}`)
+              // O código novo precisa ser compartilhado de novo: abre o novo convite.
+              navigate(created.invitation ? `/convites/${created.invitation.id}` : `/visitas/${created.id}`)
             }}
           />
         </>

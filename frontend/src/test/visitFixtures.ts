@@ -27,6 +27,7 @@ export function fakeVisit(overrides: Partial<Visit> = {}): Visit {
     createdAt: '2026-09-24T12:00:00Z',
     updatedAt: '2026-09-24T12:00:00Z',
     canEdit: true,
+    invitation: { id: 'i-1', status: 'ACTIVE' },
     ...overrides,
   }
 }

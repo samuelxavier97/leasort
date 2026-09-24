@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fakeCpf } from '@/test/fakeCpf'
 import { fakeLead, page } from '@/test/leadFixtures'
-import { me, mockFetch, problem, renderApp, type Handler } from '@/test/utils'
+import { me, mockFetch, png, problem, renderApp, type Handler } from '@/test/utils'
+import { fakeInvitation } from '@/test/invitationFixtures'
 import { fakeVisit } from '@/test/visitFixtures'
 
 // 12h de 24/09/2026 em São Paulo: hoje = 24/09/2026 e o limite é 24/09/2027 (D-074, D-080).
@@ -24,7 +25,8 @@ function mockApi(onCreate: (body: unknown) => ReturnType<Handler>) {
     if (method === 'GET' && url === '/api/leads/lead-1') return { body: fakeLead({ status: 'CONTACTED' }) }
     if (method === 'GET' && url.startsWith('/api/visits?')) return { body: page([]) }
     if (method === 'POST' && url === '/api/visits') return onCreate(body)
-    if (method === 'GET' && url === '/api/visits/v-new') return { body: fakeVisit({ id: 'v-new' }) }
+    if (method === 'GET' && url === '/api/invitations/i-new') return { body: fakeInvitation({ id: 'i-new' }) }
+    if (method === 'GET' && url === '/api/invitations/i-new/qr-code') return png()
   })
 }
 
@@ -45,7 +47,7 @@ describe('W1 — formulário de agendamento (§16.3)', () => {
     let sent: unknown
     mockApi((body) => {
       sent = body
-      return { status: 201, body: fakeVisit({ id: 'v-new' }) }
+      return { status: 201, body: fakeVisit({ id: 'v-new', invitation: { id: 'i-new', status: 'ACTIVE' } }) }
     })
     const { user, dialog, router } = await openDialog()
 
@@ -62,7 +64,9 @@ describe('W1 — formulário de agendamento (§16.3)', () => {
     await waitFor(() =>
       expect(sent).toEqual({ leadId: 'lead-1', scheduledDate: '2026-09-30', notes: null, hostNotes: null, companions: [] }),
     )
-    await waitFor(() => expect(router.state.location.pathname).toBe('/visitas/v-new'))
+    // C8 (§16.3): confirmar → convite gerado → tela do convite.
+    await waitFor(() => expect(router.state.location.pathname).toBe('/convites/i-new'))
+    expect(await screen.findByRole('heading', { name: 'Convite' })).toBeInTheDocument()
   })
 
   it('a data é obrigatória, não pode ser passada e vai até hoje + 12 meses', async () => {

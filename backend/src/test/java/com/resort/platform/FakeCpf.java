@@ -1,20 +1,26 @@
 package com.resort.platform;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicLong;
 
-/** CPFs fictícios gerados na hora, com dígitos verificadores válidos. Nenhum dado real no repositório. */
+/**
+ * CPFs fictícios gerados na hora, com dígitos verificadores válidos. Nenhum dado real no repositório.
+ * Os 9 primeiros dígitos vêm de um contador atômico com início sorteado por execução: nunca se repetem
+ * durante a suíte inteira, que compartilha o banco e tem CPF único entre Leads (RN14). O início fica
+ * abaixo de 900.000.000, e a suíte usa bem menos de 100 milhões de valores, então nunca passa de 9 dígitos.
+ */
 public final class FakeCpf {
+
+    private static final AtomicLong NEXT_BASE =
+            new AtomicLong(100_000_000L + ThreadLocalRandom.current().nextLong(800_000_000L));
 
     private FakeCpf() {}
 
     public static String generate() {
         StringBuilder digits = new StringBuilder();
-        ThreadLocalRandom random = ThreadLocalRandom.current();
         do {
             digits.setLength(0);
-            for (int i = 0; i < 9; i++) {
-                digits.append(random.nextInt(10));
-            }
+            digits.append(String.format("%09d", NEXT_BASE.getAndIncrement()));
         } while (digits.chars().distinct().count() == 1);
         digits.append(checkDigit(digits, 9));
         digits.append(checkDigit(digits, 10));

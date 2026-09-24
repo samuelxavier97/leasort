@@ -126,7 +126,8 @@ export function LeadDetailPage() {
           queryClient.invalidateQueries({ queryKey: leadsQueryKey })
           queryClient.invalidateQueries({ queryKey: visitsQueryKey })
           toast.success('Visita agendada.')
-          navigate(`/visitas/${visit.id}`)
+          // §16.3: confirmar → convite gerado → tela do convite.
+          navigate(visit.invitation ? `/convites/${visit.invitation.id}` : `/visitas/${visit.id}`)
         }}
       />
       <LeadFormDialog

@@ -7,6 +7,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.resort.platform.ApiClient;
 import com.resort.platform.FakeCpf;
 import com.resort.platform.IntegrationTestSupport;
+import com.resort.platform.TestSequence;
 import com.resort.platform.prospectors.Prospector;
 import com.resort.platform.users.Role;
 import java.time.LocalDate;
@@ -113,7 +114,7 @@ class LeadCrudTest extends IntegrationTestSupport {
         Prospector prospector = testData.prospectorOf(testData.user(Role.PROSPECTOR));
         Lead contacted = testData.lead(prospector, FakeCpf.generate(), LeadStatus.CONTACTED);
         Lead unassigned = testData.lead(null);
-        String uniqueWord = "Zeta" + UUID.randomUUID().toString().substring(0, 6);
+        String uniqueWord = TestSequence.next("Zeta");
         String named = json(admin.post("/api/leads", Map.of("name", "Lead " + uniqueWord))
                 .andReturn().getResponse().getContentAsString()).get("id").asString();
 
