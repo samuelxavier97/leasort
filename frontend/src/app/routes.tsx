@@ -5,6 +5,8 @@ import { InvitationPage } from '@/features/invitations/InvitationPage'
 import { InvitationsPage } from '@/features/invitations/InvitationsPage'
 import { GatePage } from '@/features/access/GatePage'
 import { RecentAccessPage } from '@/features/access/RecentAccessPage'
+import { ArrivalsPage } from '@/features/arrivals/ArrivalsPage'
+import { VisitSheetPage } from '@/features/arrivals/VisitSheetPage'
 import { ImportLeadsPage } from '@/features/leads/ImportLeadsPage'
 import { LeadDetailPage } from '@/features/leads/LeadDetailPage'
 import { LeadsPage } from '@/features/leads/LeadsPage'
@@ -48,8 +50,11 @@ export const routes: RouteObject[] = [
             children: [{ path: '/acessos', element: <RecentAccessPage /> }],
           },
           {
-            element: <RequireRole roles={['HOST']} />,
-            children: [{ path: '/chegadas', element: <ComingSoonPage title="Chegadas de hoje" /> }],
+            element: <RequireRole roles={['ADMIN', 'PROSPECTOR', 'HOST']} />,
+            children: [
+              { path: '/chegadas', element: <ArrivalsPage /> },
+              { path: '/chegadas/:visitId/ficha', element: <VisitSheetPage /> },
+            ],
           },
           {
             element: <RequireRole roles={['ADMIN']} />,

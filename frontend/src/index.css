@@ -79,3 +79,26 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Ficha da visita em uma página A4 (D-025): margens pequenas, sem fundo nem cabeçalho do sistema. */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: white;
+    font-size: 11pt;
+  }
+
+  .visit-sheet {
+    break-inside: avoid;
+  }
+
+  /* Um aviso na tela no momento de imprimir não entra na ficha. */
+  [data-sonner-toaster] {
+    display: none;
+  }
+}

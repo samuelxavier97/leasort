@@ -15,6 +15,13 @@ export function operationDate(instant: Date): string {
   }).format(instant)
 }
 
+const timeFormat = new Intl.DateTimeFormat('pt-BR', { timeZone: OPERATION_TIMEZONE, hour: '2-digit', minute: '2-digit' })
+
+/** Hora `HH:mm` de um instante ISO no fuso da operação. */
+export function formatOperationTime(instant: string): string {
+  return timeFormat.format(new Date(instant))
+}
+
 export function operationToday(now: Date = new Date()): string {
   return operationDate(now)
 }

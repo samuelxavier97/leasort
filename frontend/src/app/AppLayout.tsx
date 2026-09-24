@@ -33,8 +33,8 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-svh bg-muted/40">
-      <header className="border-b bg-background">
+    <div className="min-h-svh bg-muted/40 print:min-h-0 print:bg-white">
+      <header className="border-b bg-background print:hidden">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
           <span className="font-semibold">Gestão de Visitas</span>
           <nav aria-label="Menu principal" className="flex flex-1 flex-wrap gap-1">
@@ -74,7 +74,7 @@ export function AppLayout() {
           </DropdownMenu>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <main className="mx-auto max-w-6xl px-4 py-6 print:max-w-none print:p-0">
         <Outlet />
       </main>
     </div>

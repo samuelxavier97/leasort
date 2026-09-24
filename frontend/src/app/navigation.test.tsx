@@ -8,17 +8,18 @@ const cases: { role: Role; landing: string; heading: string; links: string[] }[]
     role: 'ADMIN',
     landing: '/dashboard',
     heading: 'Dashboard',
-    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Acessos', 'Usuários'],
+    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Chegadas', 'Acessos', 'Usuários'],
   },
     // W8 e C11: §16.1 — o PROSPECTOR ganha Agenda, Convites e Histórico; o ADMIN ganha Visitas e Convites.
   {
     role: 'PROSPECTOR',
     landing: '/dashboard',
     heading: 'Dashboard',
-    links: ['Dashboard', 'Meus Leads', 'Agenda', 'Convites', 'Histórico', 'Perfil'],
+    links: ['Dashboard', 'Meus Leads', 'Agenda', 'Convites', 'Chegadas de hoje', 'Histórico', 'Perfil'],
   },
   // P1: o GATE cai em /portaria com "Validar Convite" e "Acessos Recentes"; o ADMIN ganha "Acessos".
   { role: 'GATE', landing: '/portaria', heading: 'Validar Convite', links: ['Validar Convite', 'Acessos Recentes'] },
+  // F1: o HOST só tem "Chegadas de hoje"; o PROSPECTOR ganha "Chegadas de hoje" e o ADMIN "Chegadas" (§16.1).
   { role: 'HOST', landing: '/chegadas', heading: 'Chegadas de hoje', links: ['Chegadas de hoje'] },
 ]
 
@@ -110,5 +111,19 @@ describe('página inicial e menu por perfil', () => {
     const { router } = renderApp('/acessos')
 
     await waitFor(() => expect(router.state.location.pathname).not.toBe('/acessos'))
+  })
+
+  it.each(['/chegadas', '/chegadas/v-1/ficha'])('GATE não acessa %s', async (path) => {
+    mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me('GATE') } : undefined))
+    const { router } = renderApp(path)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/portaria'))
+  })
+
+  it.each(['/leads', '/visitas/v-1', '/convites'])('HOST não acessa %s', async (path) => {
+    mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me('HOST') } : undefined))
+    const { router } = renderApp(path)
+
+    await waitFor(() => expect(router.state.location.pathname).toBe('/chegadas'))
   })
 })

@@ -78,6 +78,12 @@ export function VisitDetailPage() {
 
       <FormAlert message={cancel.isError ? errorMessage(cancel.error) : null} />
 
+      {data.status === 'COMPLETED' && (
+        // A visita só fica COMPLETED pelo registro da entrada: a ficha existe (D-096).
+        <Button variant="outline" asChild>
+          <Link to={`/chegadas/${data.id}/ficha`}>Ver ficha</Link>
+        </Button>
+      )}
       {data.invitation ? (
         <Button variant="outline" asChild>
           <Link to={`/convites/${data.invitation.id}`}>Ver convite</Link>
