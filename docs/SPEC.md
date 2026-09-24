@@ -841,7 +841,7 @@ Camadas por módulo quando fizer sentido: controller, service, repository, entit
 
 ## 22.3 Stack
 
-- Backend: Java 21, Spring Boot 3.x, Spring Web, Spring Security, Spring Session JDBC, Spring Data JPA, Bean Validation, Flyway, springdoc-openapi, ZXing (QR).
+- Backend: Java 21, Spring Boot 4.1.x (D-036), Spring Web MVC, Spring Security, Spring Session JDBC, Spring Data JPA, Bean Validation, Flyway, springdoc-openapi, ZXing (QR).
 - Banco: PostgreSQL 16.
 - Frontend: React, TypeScript, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS, shadcn/ui, Recharts, `@zxing/browser`.
 - Testes: JUnit 5, Spring Boot Test, Testcontainers, Vitest, Testing Library, Playwright.
@@ -853,7 +853,7 @@ Camadas por módulo quando fizer sentido: controller, service, repository, entit
 
 ## 22.5 Migrations
 
-Flyway, versionadas, nunca editadas depois de aplicadas:
+Flyway, versionadas, nunca editadas depois de aplicadas. A lista abaixo é o conteúdo esperado; a numeração segue a ordem real de criação (D-034):
 
 ```text
 V1__create_users.sql

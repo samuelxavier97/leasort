@@ -182,3 +182,68 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-033 — Formato de erros
 
 - **Decisão:** Problem Details (RFC 9457), suportado nativamente pelo Spring. Campo extra `code` com identificador estável (ex.: `LEAD_ALREADY_SCHEDULED`) para o frontend exibir mensagens em português.
+
+## D-034 — Numeração das migrations pela ordem de criação
+
+- **Contexto:** a §22.5 da SPEC numera as migrations de V1 a V8 por entidade, mas a ordem das fases (§25) cria `users`, `prospectors`, `audit_logs` e as tabelas de sessão (Fase 2) antes de `leads` (Fase 3). O Flyway rejeita, por padrão, uma versão menor criada depois de uma maior já aplicada.
+- **Decisão:** as migrations são numeradas na ordem real em que são criadas. A §22.5 passa a ser apenas a lista do conteúdo esperado, não da numeração.
+- **Descartado:** criar as oito migrations na Fase 1 (adiantaria o modelo de dados antes das fases correspondentes); ativar `outOfOrder` no Flyway (mascara erros de ordem).
+- **Impacto:** a Fase 1 não tem migration. Cada fase cria as suas com o próximo número livre.
+
+## D-035 — CI local e GitHub Actions
+
+- **Decisão:** `scripts/verify.sh` é o CI local: `./mvnw verify` no backend; `npm ci`, lint, typecheck, testes e build no frontend. O workflow `.github/workflows/ci.yml` apenas executa esse script em todo push e pull request.
+- **Descartado:** lógica de build duplicada no workflow; o script é a única definição do que é "build e testes passando".
+- **Impacto:** requer Java 21, Node 22+ e Docker (Testcontainers) tanto na máquina local quanto no runner.
+
+## D-036 — Spring Boot 4.1.x
+
+- **Contexto:** a §22.3 da SPEC previa Spring Boot 3.x. A linha 3.5 está sem suporte OSS desde junho de 2026 e a 4.0 termina em dezembro de 2026.
+- **Decisão:** Spring Boot 4.1.x, substituindo o "3.x" da §22.3. Versões gerenciadas pelo BOM 4.1.1 e confirmadas para a linha 4.1: Spring Framework 7.0, Hibernate 7.4, Flyway 12.4, Spring Session 4.1, Testcontainers 2.0, Jackson 3.1, JUnit 6.0. Fora do BOM: springdoc-openapi 3.1.x (compilado contra Boot 4.1).
+- **Impacto:** starters modulares do Boot 4: `spring-boot-starter-webmvc` (no lugar de `-web`), `spring-boot-starter-flyway` (o Flyway não é mais autoconfigurado só com `flyway-core`) mais `flyway-database-postgresql`, `spring-boot-starter-session-jdbc` na Fase 2 e starters de teste por módulo (ex.: `spring-boot-starter-webmvc-test`). Testcontainers 2 usa os artefatos `testcontainers-postgresql` e `testcontainers-junit-jupiter`, com o pacote `org.testcontainers.postgresql`.
+
+## D-037 — Perfil `dev` somente no `spring-boot:run`
+
+- **Decisão:** o perfil `dev` é ativado apenas pela configuração do `spring-boot-maven-plugin`. O jar não tem perfil padrão e não sobe sem `SPRING_PROFILES_ACTIVE` explícito.
+- **Descartado:** `spring.profiles.default=dev` no `application.yml`; um deploy sem perfil cairia em `dev`, com dados fictícios.
+
+## D-038 — Docker Compose de desenvolvimento só com PostgreSQL
+
+- **Decisão:** na Fase 1, o `docker-compose.yml` tem apenas o serviço `postgres`. Backend e frontend rodam localmente em desenvolvimento. Imagens e `docker-compose.prod.yml` ficam para a Fase 11.
+
+## D-039 — Remarcação copia dados da visita
+
+- **Contexto:** `POST /api/visits/{id}/reschedule` recebe só `{ scheduledDate }`, mas a remarcação cria uma visita nova (D-009).
+- **Decisão:** a nova visita recebe cópia de `notes`, `host_notes` e dos acompanhantes, estes como novos registros em `visit_companions`.
+- **Descartado:** exigir que o Prospector recadastre tudo; perda de dados sem motivo.
+
+## D-040 — Estados de origem para agendar e descartar
+
+- **Decisão:** agendar visita é permitido a partir de `NEW`, `CONTACTED` ou `VISITED`. Descartar o Lead é permitido a partir de qualquer estado exceto `CANCELLED`; se houver visita `SCHEDULED`, ela e o convite ativo são cancelados na mesma transação. Demais origens retornam 409.
+
+## D-041 — Leitura e escrita do Prospector após reatribuição
+
+- **Contexto:** D-013 verifica o acesso pelo dono atual do Lead; D-023 permite chegadas e fichas também ao responsável pela visita.
+- **Decisão:** leitura (visita, convite, ficha, chegadas) é permitida ao Prospector responsável pela visita (`visits.prospector_id`) ou ao dono atual do Lead. Escrita (editar, remarcar, cancelar, reemitir) é permitida só ao dono atual do Lead ou ao ADMIN. Sem permissão, 404.
+- **Impacto:** complementa D-013 e D-023.
+
+## D-042 — Troca de role de usuário
+
+- **Decisão:** `PUT /api/users/{id}` permite trocar a role apenas entre `ADMIN`, `GATE` e `HOST`. Troca para ou a partir de `PROSPECTOR` retorna 409.
+- **Descartado:** criar ou remover o registro em `prospectors` na troca; afetaria carteira e histórico de visitas.
+
+## D-043 — Prazo de edição da visita
+
+- **Decisão:** vale a RN13: acompanhantes, `notes` e `host_notes` são editáveis enquanto a visita estiver `SCHEDULED`, inclusive no próprio dia até o registro da entrada. O "até o dia da visita" da §6.2 da SPEC é lido nesse sentido.
+
+## D-044 — Metadata de ACCESS_DENIED
+
+- **Decisão:** a auditoria `ACCESS_DENIED` grava em `metadata` apenas o `access_record_id`. O código tentado fica somente em `access_records.attempted_code`.
+- **Motivo:** regra 5 do `CLAUDE.md`; nenhum código de convite fora do lugar necessário.
+
+## D-045 — Respostas não especificadas
+
+- **Decisão:**
+  - limite de tentativas (login e validação) estourado: HTTP 429, Problem Details com `code` estável;
+  - login de usuário inativo: o mesmo erro genérico de credenciais inválidas, com auditoria `LOGIN_FAILED`;
+  - tela "Perfil" do Prospector: dados do próprio usuário somente leitura e troca de senha.

@@ -1,0 +1,11 @@
+# Ambiente
+.env
+
+# Backend
+backend/target/
+
+# IDEs e SO
+.idea/
+*.iml
+.vscode/
+.DS_Store
