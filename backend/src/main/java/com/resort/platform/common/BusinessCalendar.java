@@ -1,6 +1,7 @@
 package com.resort.platform.common;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import org.springframework.stereotype.Component;
@@ -22,6 +23,14 @@ public class BusinessCalendar {
 
     public LocalDate today() {
         return LocalDate.now(clock.withZone(zone));
+    }
+
+    /**
+     * Primeiro instante do dia seguinte a {@code date} em {@code APP_TIMEZONE}: o fim do dia como limite
+     * exclusivo (D-085). Calculado com as regras do fuso, correto também em dias de horário de verão.
+     */
+    public Instant endOfDay(LocalDate date) {
+        return date.plusDays(1).atStartOfDay(zone).toInstant();
     }
 
     public ZoneId zone() {

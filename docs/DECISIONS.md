@@ -425,3 +425,29 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Contexto:** os campos de data de agendamento e remarcação limitam a escolha entre hoje e hoje + 12 meses (D-074), mas o frontend não recebe `APP_TIMEZONE`.
 - **Decisão:** o frontend calcula "hoje" em `America/Sao_Paulo`, o valor padrão de `APP_TIMEZONE`, e soma 12 meses como o `LocalDate.plusMonths` do backend (29/02 vira 28/02). Esses limites só orientam a digitação; o backend continua a autoridade, e os erros `SCHEDULED_DATE_IN_PAST` e `SCHEDULED_DATE_TOO_FAR` aparecem em português. Se a operação mudar de fuso, a constante do frontend acompanha a mudança.
 - **Descartado:** endpoint de configuração só para expor o fuso; nova dependência entre telas e backend sem ganho de segurança.
+
+## D-081 — Convite dentro das transações da visita
+
+- **Decisão:** cumpre a D-071 a partir da Fase 5. `InvitationService.issue` e `cancelActive` usam `@Transactional(propagation = MANDATORY)` e são chamados pelo `VisitService` depois do lock no Lead: criação (`issue`), remarcação (`cancelActive` da antiga, antes do flush, e `issue` da nova), cancelamento e descarte do Lead (`cancelActive`, com `reason` `VISIT_RESCHEDULED`, `VISIT_CANCELLED` ou `LEAD_DISCARDED`). Qualquer falha desfaz visita e convite juntos. Invariante testado: toda visita `SCHEDULED` tem exatamente um convite `ACTIVE`, e nenhuma outra visita tem convite `ACTIVE`.
+- **Visitas anteriores à Fase 5 (confirmado na aprovação):** não há criação retroativa. O sistema as tolera: `invitation` vem `null`, cancelar e descartar funcionam (`cancelActive` sem convite ativo não faz nada) e remarcar gera o convite da nova visita. O `docker compose down -v` continua sendo a orientação para bancos de desenvolvimento.
+- **Descartado:** trigger `DEFERRABLE` impondo o convite no banco; traria regra de negócio para o banco e travaria as visitas antigas de desenvolvimento.
+
+## D-082 — Geração do código do convite
+
+- **Decisão:** `InvitationCodeGenerator` monta 10 caracteres de `0123456789ABCDEFGHJKMNPQRSTVWXYZ` com um `RandomGenerator`, que em produção é um `SecureRandom` (bean `CommonConfig.secureRandom`; nos testes, um `ScriptedRandom` que permite provocar colisão). Até 5 tentativas, cada uma checando se o código já existe em qualquer convite, inclusive cancelado: códigos nunca são reaproveitados. Esgotadas as tentativas, 500 genérico. O índice único `invitations_code_uk` é o último seguro e vira 409 `INVITATION_CODE_CONFLICT`, sem repassar a mensagem do banco, que traz o código. A tabela também tem `CHECK` do alfabeto.
+
+## D-083 — QR do convite
+
+- **Decisão:** `GET /api/invitations/{id}/qr-code` devolve PNG de 512 px, correção de erro M, margem 2, com `Cache-Control: no-store`. Conteúdo exatamente `RSV:` + código (RN08). Só para convite `ACTIVE`; nos demais status, 409 `INVITATION_NOT_ACTIVE` (confirmado na aprovação), para não circular código morto.
+
+## D-084 — Reemissão do convite
+
+- **Decisão:** `POST /api/invitations/{id}/reissue` trava o Lead antes de ler o convite (mesma ordem da D-073). Sem escrita (D-041), inclusive para o responsável antigo que só lê, 404 `INVITATION_NOT_FOUND` com o corpo de um id inexistente. Convite fora de `ACTIVE`, ou visita fora de `SCHEDULED`, 409 `INVITATION_NOT_ACTIVE`. O atual vira `CANCELLED` e é gravado antes do insert do novo (índice parcial); o novo tem código novo e o mesmo `expires_at`. Auditoria: `INVITATION_REISSUED` no antigo (`newInvitationId`) e `INVITATION_CREATED` no novo (`visitId`, `reissuedFrom`). Visita e acompanhantes não mudam.
+
+## D-085 — `expires_at` do convite
+
+- **Decisão:** `BusinessCalendar.endOfDay(data)` = primeiro instante do dia seguinte à visita em `APP_TIMEZONE`, calculado com as regras do fuso (correto em horário de verão). É limite exclusivo: a partir dele o convite está expirado (confirmado na aprovação). Na remarcação, acompanha a nova data; na reemissão, é mantido. A portaria continua comparando a data na hora (D-006).
+
+## D-086 — Convite na resposta da visita e da API de convites
+
+- **Decisão:** `VisitResponse.invitation` traz só `{id, status}` do convite atual (o `ACTIVE` ou, sem ele, o mais recente); o código aparece apenas nas rotas de convite, para quem pode ler a visita (D-041). `InvitationResponse` traz `code`, `formattedCode`, status e datas, a visita (`scheduledDate`, `status`, `companionsCount`, `canEdit`), `lead {id, name, accessible}`, `prospector` e `canReissue` (escrita, convite `ACTIVE` e visita `SCHEDULED`). Nenhum CPF. Lista `GET /api/invitations` com `status`, `visitId`, `leadId`, `prospectorId` (só ADMIN) e `order`, na ordem da data da visita. Auditoria de convite leva só ids e motivo, nunca o código.

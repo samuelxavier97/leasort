@@ -17,6 +17,13 @@ public class TestcontainersConfiguration {
         return new MutableClock();
     }
 
+    /** Substitui a aleatoriedade do código de convite nos testes de integração (D-082). */
+    @Bean
+    @Primary
+    ScriptedRandom scriptedRandom() {
+        return new ScriptedRandom();
+    }
+
     @Bean
     @ServiceConnection
     PostgreSQLContainer postgresContainer() {

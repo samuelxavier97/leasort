@@ -32,6 +32,18 @@ class BusinessCalendarTest {
         assertThat(calendar("America/Sao_Paulo").today()).isEqualTo(LocalDate.of(2026, 3, 10));
     }
 
+    /** I3: fim do dia como primeiro instante do dia seguinte no fuso da operação (D-085). */
+    @Test
+    void endOfDayIsTheFirstInstantOfTheNextDayInTheOperationTimezone() {
+        assertThat(calendar("America/Sao_Paulo").endOfDay(LocalDate.of(2026, 3, 9)))
+                .isEqualTo(Instant.parse("2026-03-10T03:00:00Z"));
+        // Dia em que começa o horário de verão em Nova York (08/03/2026): 00:00 do dia 09 já é UTC-4.
+        assertThat(calendar("America/New_York").endOfDay(LocalDate.of(2026, 3, 8)))
+                .isEqualTo(Instant.parse("2026-03-09T04:00:00Z"));
+        assertThat(calendar("America/New_York").endOfDay(LocalDate.of(2026, 3, 7)))
+                .isEqualTo(Instant.parse("2026-03-08T05:00:00Z"));
+    }
+
     @Test
     void invalidZoneFailsFast() {
         assertThatThrownBy(() -> calendar("Lua/Base")).isInstanceOf(DateTimeException.class);
