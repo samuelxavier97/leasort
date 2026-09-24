@@ -455,8 +455,8 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-087 — Imagem de compartilhamento do convite e nome do Resort
 
 - **Decisão:** a imagem é montada no frontend em canvas (§13), com 1080 × 1440 px: nome do Resort, "Convite de visita", nome do Lead, "Visita em DD/MM/AAAA", o QR vindo da API, o código `ABCDE-FGHJK` e a instrução "Apresente este código na portaria" (pedido na aprovação da Fase 5). Nada de CPF, telefone, e-mail, acompanhantes ou Prospector. O arquivo se chama `convite-ABCDE-FGHJK.png`. "Compartilhar" usa a Web Share API com arquivo quando `navigator.canShare({ files })` aceita; senão, baixa. "Baixar" sempre baixa. Cancelar o compartilhamento não é erro.
-- **Nome do Resort:** constante única `RESORT_NAME` em `frontend/src/lib/resort.ts`, como o fuso da D-080. O valor atual é o genérico "Resort"; o nome oficial entra nessa constante quando for definido, sem outra mudança.
-- **Descartado:** variável de ambiente ou endpoint de configuração só para o nome; nenhum ganho para um texto fixo da operação.
+- **Nome do Resort (revisto no início da Fase 6, a pedido):** constante única `RESORT_NAME` em `frontend/src/lib/resort.ts`, lida da variável de build do Vite `VITE_RESORT_NAME` (`import.meta.env.VITE_RESORT_NAME?.trim() || 'Resort'`). Sem a variável, ou com ela em branco, vale o genérico "Resort". O nome real é definido só no ambiente de build de produção, na Fase 11, e nunca entra num arquivo do repositório; `.env.*` (exceto `.env.example`) fica fora do Git.
+- **Descartado:** endpoint de configuração só para o nome (nenhum ganho para um texto fixo da operação); nome real numa constante ou num `.env` versionado (o repositório é público).
 - **Navegação (confirmado na aprovação):** depois de agendar, remarcar ou reemitir, a tela abre o convite novo, porque o código novo precisa ser compartilhado.
 
 ## D-088 — Respostas da validação e do registro na Portaria
