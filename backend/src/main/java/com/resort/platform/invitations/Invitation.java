@@ -68,6 +68,17 @@ public class Invitation {
         this.expiresAt = expiresAt;
     }
 
+    /** Entrada registrada na Portaria (§12.3). */
+    public void markUsed(Instant when) {
+        this.status = InvitationStatus.USED;
+        this.usedAt = when;
+    }
+
+    /** Job noturno (§20). */
+    public void expire() {
+        this.status = InvitationStatus.EXPIRED;
+    }
+
     void cancel(Instant when) {
         this.status = InvitationStatus.CANCELLED;
         this.cancelledAt = when;

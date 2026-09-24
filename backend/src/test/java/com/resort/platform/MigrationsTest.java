@@ -23,13 +23,14 @@ class MigrationsTest extends IntegrationTestSupport {
         assertThat(flyway.info().applied())
                 .extracting(MigrationInfo::getVersion)
                 .extracting(Object::toString)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8");
         assertThat(jdbc.sql("""
                         SELECT table_name FROM information_schema.tables
                         WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history'
                         """).query(String.class).list())
                 .containsExactlyInAnyOrder(
-                        "users", "prospectors", "audit_logs", "spring_session", "spring_session_attributes", "leads", "visits", "visit_companions", "invitations");
+                        "users", "prospectors", "audit_logs", "spring_session", "spring_session_attributes", "leads", "visits", "visit_companions", "invitations",
+                        "access_records", "access_record_companions");
     }
 
     @Test
@@ -166,6 +167,62 @@ class MigrationsTest extends IntegrationTestSupport {
         } finally {
             jdbc.sql("DROP SCHEMA IF EXISTS " + schema + " CASCADE").update();
         }
+    }
+
+    /** G1: V8 (§8.7, §8.8, D-089). */
+    @Test
+    void accessRecordsEnforceConsistencyAndOneEntryPerInvitation() {
+        UUID lead = UUID.randomUUID();
+        jdbc.sql("INSERT INTO leads (id, name, status) VALUES (:id, 'Lead Fictício', 'VISIT_SCHEDULED')").param("id", lead).update();
+        UUID prospector = testData.prospectorOf(testData.user(com.resort.platform.users.Role.PROSPECTOR)).getId();
+        UUID visit = insertVisit(lead, prospector, "SCHEDULED");
+        UUID invitation = UUID.randomUUID();
+        jdbc.sql("""
+                        INSERT INTO invitations (id, visit_id, code, status, expires_at)
+                        VALUES (:id, :visit, :code, 'ACTIVE', now() + interval '1 day')
+                        """).param("id", invitation).param("visit", visit).param("code", TestCodes.unique()).update();
+        UUID gate = testData.user(com.resort.platform.users.Role.GATE).getId();
+
+        insertAccess(invitation, gate, "DENIED", "WRONG_DATE", false);
+        insertAccess(null, gate, "DENIED", "INVALID_CODE", false);
+        insertAccess(invitation, gate, "AUTHORIZED", null, true);
+
+        assertThatThrownBy(() -> insertAccess(invitation, gate, "AUTHORIZED", null, true))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("access_records_invitation_authorized_uk");
+        assertThatThrownBy(() -> insertAccess(invitation, gate, "AUTHORIZED", null, false))
+                .as("AUTHORIZED sem entry_at")
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("access_records_consistency_ck");
+        assertThatThrownBy(() -> insertAccess(invitation, gate, "DENIED", null, false))
+                .as("DENIED sem motivo")
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("access_records_consistency_ck");
+        assertThatThrownBy(() -> insertAccess(invitation, gate, "DENIED", "WRONG_DATE", true))
+                .as("DENIED com entry_at")
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("access_records_consistency_ck");
+        assertThatThrownBy(() -> insertAccess(null, gate, "DENIED", "EXPIRED", false))
+                .as("sem convite só com INVALID_CODE")
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("access_records_consistency_ck");
+        // Resultado fora da lista viola as duas CHECKs; o PostgreSQL relata a primeira pela ordem do nome.
+        assertThatThrownBy(() -> insertAccess(invitation, gate, "PENDING", null, false))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageMatching("(?s).*access_records_(consistency|result)_ck.*");
+        assertThatThrownBy(() -> insertAccess(invitation, gate, "DENIED", "LATE", false))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("access_records_denial_reason_ck");
+    }
+
+    private void insertAccess(UUID invitation, UUID user, String result, String reason, boolean entered) {
+        jdbc.sql("""
+                        INSERT INTO access_records (id, invitation_id, attempted_code, validated_by_user_id, gate, result,
+                                                    denial_reason, entry_at)
+                        VALUES (:id, :invitation, 'X', :user, 'PRINCIPAL', :result, :reason, CASE WHEN :entered THEN now() END)
+                        """)
+                .param("id", UUID.randomUUID()).param("invitation", invitation).param("user", user)
+                .param("result", result).param("reason", reason).param("entered", entered).update();
     }
 
     private void insertInvitation(UUID visit, String code, String status, boolean cancelled) {

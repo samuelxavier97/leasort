@@ -87,6 +87,16 @@ public class Visit {
         return companion;
     }
 
+    /** Entrada registrada na Portaria (§12.3). */
+    public void complete() {
+        this.status = VisitStatus.COMPLETED;
+    }
+
+    /** Job noturno (§20). */
+    public void markNoShow() {
+        this.status = VisitStatus.NO_SHOW;
+    }
+
     void cancel(Instant when) {
         this.status = VisitStatus.CANCELLED;
         this.cancelledAt = when;
