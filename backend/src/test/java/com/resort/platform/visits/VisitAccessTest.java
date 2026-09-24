@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.resort.platform.ApiClient;
 import com.resort.platform.leads.Lead;
 import com.resort.platform.users.Role;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -96,6 +98,31 @@ class VisitAccessTest extends VisitTestSupport {
         assertThat(ids(second.client(), "/api/visits?leadId=" + lead.getId() + "&prospectorId=" + UUID.randomUUID()))
                 .containsExactly(old.toString(), next.toString());
         admin.get("/api/visits?size=500").andExpect(jsonPath("$.size").value(100));
+    }
+
+    @Test
+    void historyScopeExcludesTheAgendaWithTheDayInTheOperationTimezone() throws Exception {
+        clock.set(Instant.parse("2026-03-10T15:00:00Z"));
+        ProspectorSession me = loggedInProspector();
+        UUID pastSoon = scheduledId(me.client(), testData.lead(me.prospector()).getId(), LocalDate.parse("2026-03-11"), List.of());
+        UUID cancelled = scheduledId(me.client(), testData.lead(me.prospector()).getId(), LocalDate.parse("2026-03-15"), List.of());
+        me.client().patch("/api/visits/" + cancelled + "/cancel", null).andExpect(status().isOk());
+        UUID upcoming = scheduledId(me.client(), testData.lead(me.prospector()).getId(), LocalDate.parse("2026-03-15"), List.of());
+
+        // 23:59:59 de 11/03 em São Paulo (já 12/03 em UTC): a visita de 11/03 ainda é da Agenda.
+        clock.set(Instant.parse("2026-03-12T02:59:59Z"));
+        assertThat(ids(me.client(), "/api/visits?scope=history&order=desc")).containsExactly(cancelled.toString());
+        assertThat(ids(me.client(), "/api/visits?status=SCHEDULED&from=2026-03-11"))
+                .containsExactly(pastSoon.toString(), upcoming.toString());
+
+        clock.set(Instant.parse("2026-03-12T03:00:00Z"));
+        assertThat(ids(me.client(), "/api/visits?scope=history&order=desc"))
+                .containsExactly(cancelled.toString(), pastSoon.toString());
+        assertThat(ids(me.client(), "/api/visits?scope=history&status=SCHEDULED")).containsExactly(pastSoon.toString());
+
+        me.client().get("/api/visits?scope=other")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
     private List<String> ids(ApiClient client, String path) throws Exception {

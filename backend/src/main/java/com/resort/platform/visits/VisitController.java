@@ -2,6 +2,7 @@ package com.resort.platform.visits;
 
 import com.resort.platform.auth.AuthenticatedUser;
 import com.resort.platform.auth.ViewerResolver;
+import com.resort.platform.common.ApiException;
 import com.resort.platform.common.PageResponse;
 import com.resort.platform.visits.dto.CreateVisitRequest;
 import com.resort.platform.visits.dto.RescheduleVisitRequest;
@@ -46,8 +47,13 @@ public class VisitController {
             @RequestParam(required = false) UUID leadId,
             @RequestParam(required = false) UUID prospectorId,
             @RequestParam(defaultValue = "asc") String order,
+            @RequestParam(required = false) String scope,
             Pageable pageable) {
-        VisitFilter filter = new VisitFilter(status, from, to, leadId, prospectorId, "desc".equalsIgnoreCase(order));
+        if (scope != null && !"history".equals(scope)) {
+            throw ApiException.badRequest("VALIDATION_ERROR", "Escopo de lista inválido.");
+        }
+        VisitFilter filter = new VisitFilter(
+                status, from, to, leadId, prospectorId, "desc".equalsIgnoreCase(order), scope != null);
         return visitService.list(filter, pageable, viewers.resolve(user));
     }
 
