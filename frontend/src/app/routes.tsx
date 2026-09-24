@@ -1,6 +1,9 @@
 import { Navigate, type RouteObject } from 'react-router'
 import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage'
 import { LoginPage } from '@/features/auth/LoginPage'
+import { ImportLeadsPage } from '@/features/leads/ImportLeadsPage'
+import { LeadDetailPage } from '@/features/leads/LeadDetailPage'
+import { LeadsPage } from '@/features/leads/LeadsPage'
 import { ProfilePage } from '@/features/profile/ProfilePage'
 import { ProspectorsPage } from '@/features/prospectors/ProspectorsPage'
 import { UsersPage } from '@/features/users/UsersPage'
@@ -20,7 +23,11 @@ export const routes: RouteObject[] = [
           { index: true, element: <HomeRedirect /> },
           {
             element: <RequireRole roles={['ADMIN', 'PROSPECTOR']} />,
-            children: [{ path: '/dashboard', element: <ComingSoonPage title="Dashboard" /> }],
+            children: [
+              { path: '/dashboard', element: <ComingSoonPage title="Dashboard" /> },
+              { path: '/leads', element: <LeadsPage /> },
+              { path: '/leads/:id', element: <LeadDetailPage /> },
+            ],
           },
           {
             element: <RequireRole roles={['GATE']} />,
@@ -34,6 +41,7 @@ export const routes: RouteObject[] = [
             element: <RequireRole roles={['ADMIN']} />,
             children: [
               { path: '/usuarios', element: <UsersPage /> },
+              { path: '/leads/importar', element: <ImportLeadsPage /> },
               { path: '/prospectores', element: <ProspectorsPage /> },
             ],
           },

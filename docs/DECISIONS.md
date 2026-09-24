@@ -365,3 +365,10 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Contexto:** o Hibernate 7 registra erros de SQL (loggers `org.hibernate.orm.jdbc.error` e `org.hibernate.engine.jdbc.spi.SqlExceptionHelper`) com os valores do comando e a chave violada, por exemplo `Key (cpf)=(...)`. Um teste de log flagrou o CPF na saída.
 - **Decisão:** os dois loggers ficam em `OFF`. As exceções continuam sendo lançadas e tratadas: violação de constraint vira 409; erro inesperado é registrado pelo `GlobalExceptionHandler`.
 - **Impacto:** diagnóstico de erro SQL passa a depender da exceção tratada, e não do log do Hibernate. O teste de log cobre a corrida que chega à constraint.
+
+## D-070 — Risco residual: confirmação de CPF pelo Prospector (aceito na V1)
+
+- **Status:** risco conhecido, aceito na V1.
+- **Contexto:** a D-061 impede o Prospector de usar a edição do próprio Lead como oráculo do CPF mascarado. Ainda assim, a máscara `***.456.789-**` deixa só os 3 primeiros dígitos desconhecidos (1.000 candidatos, com os verificadores calculáveis). O Prospector pode informar cada candidato em Leads **da própria carteira sem CPF**: o candidato certo responde `409 CPF_ALREADY_EXISTS`, o que confirma o CPF completo do Lead A.
+- **Por que é aceito:** o ataque é pouco prático. Cada tentativa errada é aceita, grava o CPF no Lead de teste e o consome, porque o Prospector não pode alterar nem remover um CPF (D-061); seriam necessários até ~1.000 Leads sem CPF na carteira. Cada tentativa gera `LEAD_UPDATED` na auditoria, e o volume anormal fica visível.
+- **Mitigação futura, não implementada:** limitar a quantidade de CPFs que um Prospector pode informar por período (por exemplo, N por dia), com resposta 429 e auditoria ao atingir o limite.

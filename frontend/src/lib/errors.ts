@@ -17,12 +17,25 @@ const MESSAGES: Record<string, string> = {
   LAST_ADMIN: 'Não é possível remover o último administrador ativo.',
   USER_NOT_FOUND: 'Usuário não encontrado.',
   PROSPECTOR_NOT_FOUND: 'Prospector não encontrado.',
+  PROSPECTOR_INACTIVE: 'O Prospector está inativo.',
+  LEAD_NOT_FOUND: 'Lead não encontrado.',
+  CPF_ALREADY_EXISTS: 'Já existe um Lead com este CPF.',
+  CPF_CHANGE_NOT_ALLOWED: 'O CPF deste Lead só pode ser alterado pelo administrador.',
+  INVALID_STATUS_TRANSITION: 'Esta mudança de status não é permitida para a situação atual do Lead.',
+  FILE_TOO_LARGE: 'O arquivo é maior que o limite de 5 MB.',
+  NOT_FOUND: 'Recurso não encontrado.',
 }
+
+/** Códigos cujo detalhe vindo do backend já é a melhor mensagem em português. */
+const DETAIL_CODES = new Set(['INVALID_HEADER', 'EMPTY_FILE', 'TOO_MANY_ROWS', 'INVALID_ENCODING', 'IMPORT_REJECTED'])
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     // Para validação, o backend já devolve um detalhe específico em português.
     if (error.code === 'VALIDATION_ERROR' && error.message && error.message !== 'Dados inválidos.') {
+      return error.message
+    }
+    if (DETAIL_CODES.has(error.code) && error.message) {
       return error.message
     }
     return MESSAGES[error.code] ?? 'Não foi possível concluir a operação.'

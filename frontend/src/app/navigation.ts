@@ -29,11 +29,13 @@ export interface NavItem {
 export const NAV_ITEMS: Record<Role, NavItem[]> = {
   ADMIN: [
     { to: '/dashboard', label: 'Dashboard' },
-    { to: '/usuarios', label: 'Usuários' },
+    { to: '/leads', label: 'Leads' },
     { to: '/prospectores', label: 'Prospectores' },
+    { to: '/usuarios', label: 'Usuários' },
   ],
   PROSPECTOR: [
     { to: '/dashboard', label: 'Dashboard' },
+    { to: '/leads', label: 'Meus Leads' },
     { to: '/perfil', label: 'Perfil' },
   ],
   GATE: [{ to: '/portaria', label: 'Validar Convite' }],
