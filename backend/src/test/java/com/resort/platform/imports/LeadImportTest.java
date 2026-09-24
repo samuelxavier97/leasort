@@ -10,6 +10,7 @@ import com.resort.platform.FakeCpf;
 import com.resort.platform.HttpBrowser;
 import com.resort.platform.IntegrationTestSupport;
 import com.resort.platform.TestData;
+import com.resort.platform.TestSequence;
 import com.resort.platform.leads.LeadStatus;
 import com.resort.platform.prospectors.Prospector;
 import com.resort.platform.users.Role;
@@ -45,7 +46,7 @@ class LeadImportTest extends IntegrationTestSupport {
     void setUp() throws Exception {
         adminUser = testData.user(Role.ADMIN);
         admin = client().login(adminUser.getEmail(), TestData.PASSWORD);
-        token = "Imp" + UUID.randomUUID().toString().substring(0, 8);
+        token = TestSequence.next("Imp");
     }
 
     @Test

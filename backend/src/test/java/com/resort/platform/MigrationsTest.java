@@ -34,7 +34,7 @@ class MigrationsTest extends IntegrationTestSupport {
 
     @Test
     void usersRejectsUppercaseEmail() {
-        assertThatThrownBy(() -> insertUser("Maiuscula-" + UUID.randomUUID() + "@test.local", "GATE"))
+        assertThatThrownBy(() -> insertUser(TestSequence.next("Maiuscula-") + "@test.local", "GATE"))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("users_email_lowercase_ck");
     }

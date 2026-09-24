@@ -8,7 +8,6 @@ import com.resort.platform.prospectors.ProspectorRepository;
 import com.resort.platform.users.Role;
 import com.resort.platform.users.User;
 import com.resort.platform.users.UserRepository;
-import java.util.UUID;
 import org.springframework.boot.test.context.TestComponent;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -38,12 +37,14 @@ public class TestData {
         this.transaction = transaction;
     }
 
+    /** E-mail único na execução (TestSequence), sempre em minúsculas. */
     public static String uniqueEmail(String prefix) {
-        return prefix + "-" + UUID.randomUUID() + "@test.local";
+        return TestSequence.next(prefix + "-") + "@test.local";
     }
 
+    /** Código de funcionário único na execução (TestSequence). */
     public static String uniqueCode() {
-        return "EMP-" + UUID.randomUUID().toString().substring(0, 8);
+        return TestSequence.next("EMP-");
     }
 
     public User user(Role role) {
@@ -70,7 +71,7 @@ public class TestData {
 
     public Lead lead(Prospector owner, String cpf, LeadStatus status) {
         return transaction.execute(status_ -> {
-            Lead lead = new Lead("Lead Fictício " + UUID.randomUUID().toString().substring(0, 8));
+            Lead lead = new Lead(TestSequence.next("Lead Fictício "));
             lead.setCpf(cpf);
             lead.setPhone("11 90000-0000");
             lead.setEmail(uniqueEmail("lead"));
