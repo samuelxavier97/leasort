@@ -16,17 +16,17 @@ class MigrationsTest extends IntegrationTestSupport {
     Flyway flyway;
 
     @Test
-    void appliesMigrationsV1ToV4AndCreatesTables() {
+    void appliesMigrationsAndCreatesTables() {
         assertThat(flyway.info().applied())
                 .extracting(MigrationInfo::getVersion)
                 .extracting(Object::toString)
-                .containsExactly("1", "2", "3", "4");
+                .containsExactly("1", "2", "3", "4", "5");
         assertThat(jdbc.sql("""
                         SELECT table_name FROM information_schema.tables
                         WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history'
                         """).query(String.class).list())
                 .containsExactlyInAnyOrder(
-                        "users", "prospectors", "audit_logs", "spring_session", "spring_session_attributes");
+                        "users", "prospectors", "audit_logs", "spring_session", "spring_session_attributes", "leads");
     }
 
     @Test
@@ -41,6 +41,38 @@ class MigrationsTest extends IntegrationTestSupport {
         assertThatThrownBy(() -> insertUser(TestData.uniqueEmail("role"), "OWNER"))
                 .isInstanceOf(DataIntegrityViolationException.class)
                 .hasMessageContaining("users_role_ck");
+    }
+
+    @Test
+    void leadsRejectsMalformedCpfAndUnknownStatus() {
+        assertThatThrownBy(() -> insertLead("1234567890a", "NEW"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("leads_cpf_digits_ck");
+        assertThatThrownBy(() -> insertLead("1234567890", "NEW"))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> insertLead(null, "CONVERTED"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("leads_status_ck");
+    }
+
+    @Test
+    void leadsCpfIsUniqueOnlyWhenPresent() {
+        insertLead(null, "NEW");
+        insertLead(null, "NEW");
+        String cpf = FakeCpf.generate();
+        insertLead(cpf, "NEW");
+
+        assertThatThrownBy(() -> insertLead(cpf, "NEW"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("leads_cpf_uk");
+    }
+
+    private void insertLead(String cpf, String status) {
+        jdbc.sql("INSERT INTO leads (id, name, cpf, status) VALUES (:id, 'Lead Fictício', :cpf, :status)")
+                .param("id", UUID.randomUUID())
+                .param("cpf", cpf)
+                .param("status", status)
+                .update();
     }
 
     private void insertUser(String email, String role) {

@@ -1,5 +1,8 @@
 package com.resort.platform;
 
+import com.resort.platform.leads.Lead;
+import com.resort.platform.leads.LeadRepository;
+import com.resort.platform.leads.LeadStatus;
 import com.resort.platform.prospectors.Prospector;
 import com.resort.platform.prospectors.ProspectorRepository;
 import com.resort.platform.users.Role;
@@ -18,16 +21,19 @@ public class TestData {
 
     private final UserRepository users;
     private final ProspectorRepository prospectors;
+    private final LeadRepository leads;
     private final PasswordEncoder passwordEncoder;
     private final TransactionTemplate transaction;
 
     public TestData(
             UserRepository users,
             ProspectorRepository prospectors,
+            LeadRepository leads,
             PasswordEncoder passwordEncoder,
             TransactionTemplate transaction) {
         this.users = users;
         this.prospectors = prospectors;
+        this.leads = leads;
         this.passwordEncoder = passwordEncoder;
         this.transaction = transaction;
     }
@@ -54,6 +60,33 @@ public class TestData {
                 prospectors.save(new Prospector(saved, uniqueCode(), null));
             }
             return saved;
+        });
+    }
+
+    /** Lead fictício com CPF gerado, atribuído a {@code owner} (ou sem dono quando nulo). */
+    public Lead lead(Prospector owner) {
+        return lead(owner, FakeCpf.generate(), LeadStatus.NEW);
+    }
+
+    public Lead lead(Prospector owner, String cpf, LeadStatus status) {
+        return transaction.execute(status_ -> {
+            Lead lead = new Lead("Lead Fictício " + UUID.randomUUID().toString().substring(0, 8));
+            lead.setCpf(cpf);
+            lead.setPhone("11 90000-0000");
+            lead.setEmail(uniqueEmail("lead"));
+            lead.setStatus(status);
+            lead.setProspector(owner == null ? null : prospectors.findById(owner.getId()).orElseThrow());
+            return leads.save(lead);
+        });
+    }
+
+    public Lead reloadLead(Lead lead) {
+        return transaction.execute(status -> {
+            Lead reloaded = leads.findWithProspectorById(lead.getId()).orElseThrow();
+            if (reloaded.getProspector() != null) {
+                reloaded.getProspector().getId();
+            }
+            return reloaded;
         });
     }
 

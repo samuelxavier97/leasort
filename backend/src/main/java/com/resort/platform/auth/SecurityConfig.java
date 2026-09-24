@@ -61,6 +61,10 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.POST, "/api/auth/change-password", "/api/auth/logout")
                             .authenticated()
                             .requestMatchers("/api/users/**", "/api/prospectors/**").hasRole("ADMIN")
+                            .requestMatchers(HttpMethod.POST, "/api/leads").hasRole("ADMIN")
+                            .requestMatchers(HttpMethod.PATCH, "/api/leads/assign").hasRole("ADMIN")
+                            .requestMatchers("/api/leads/import", "/api/leads/import/**").hasRole("ADMIN")
+                            .requestMatchers("/api/leads", "/api/leads/**").hasAnyRole("ADMIN", "PROSPECTOR")
                             .requestMatchers("/api/**").hasAnyRole("ADMIN", "PROSPECTOR", "GATE", "HOST")
                             .anyRequest().denyAll();
                 });
