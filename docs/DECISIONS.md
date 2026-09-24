@@ -301,3 +301,9 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 
 - **Decisão:** na Fase 11, as migrations rodam com um usuário do PostgreSQL dono do schema, e a aplicação conecta com outro usuário, sem ownership das tabelas e só com os privilégios de DML necessários. Assim a aplicação não consegue remover nem desabilitar o trigger de `audit_logs` (D-028). Não é opcional.
 - **Impacto:** configuração separada de credenciais para o Flyway e para o datasource na Fase 11.
+
+## D-058 — Dispatch de erro liberado no Spring Security
+
+- **Contexto:** a Spring Security aplica autorização também ao dispatch interno de erro (`DispatcherType.ERROR`). Com a regra final `anyRequest().denyAll()` (D-055), o encaminhamento para `/error` seria negado, e um erro 500, ou um erro lançado por um filtro, chegaria ao cliente como 403.
+- **Decisão:** `dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` no `SecurityConfig`. A regra vale só para o dispatch interno de erro; nenhuma rota nova fica acessível por requisição direta.
+- **Impacto:** o status original do erro é preservado. A resposta continua em Problem Details, sem detalhes internos (`GlobalExceptionHandler` devolve `INTERNAL_ERROR` genérico).
