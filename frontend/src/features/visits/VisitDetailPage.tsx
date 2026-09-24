@@ -63,9 +63,14 @@ export function VisitDetailPage() {
           <h1 className="text-2xl font-semibold">Visita de {formatDate(data.scheduledDate)}</h1>
           <p className="text-sm text-muted-foreground">
             Lead:{' '}
-            <Link className="underline" to={`/leads/${data.lead.id}`}>
-              {data.lead.name}
-            </Link>
+            {data.lead.accessible ? (
+              <Link className="underline" to={`/leads/${data.lead.id}`}>
+                {data.lead.name}
+              </Link>
+            ) : (
+              // Responsável antigo: lê a visita, mas o Lead saiu da carteira dele (D-078).
+              <span>{data.lead.name}</span>
+            )}
           </p>
         </div>
         <Badge variant={data.status === 'SCHEDULED' ? 'secondary' : 'outline'}>{VISIT_STATUS_LABELS[data.status]}</Badge>

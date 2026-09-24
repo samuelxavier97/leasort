@@ -412,6 +412,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-078 — `canEdit` e ficha da visita
 
 - **Decisão:** a resposta da visita traz `canEdit`, calculado no backend para quem vê (escrita permitida e visita `SCHEDULED`). Serve só para a interface; o backend valida toda escrita. A ficha (`GET /api/visits/{id}/sheet`) fica para a Fase 7.
+- **`lead.accessible` (adicionado no frontend da Fase 4):** a resposta da visita traz também `lead.accessible`, calculado no backend com a mesma regra de carteira do `GET /api/leads/{id}` (D-041: ADMIN ou PROSPECTOR dono atual), num único método (`LeadService.isInWallet`) usado pelas duas rotas. O responsável antigo, que ainda lê a visita (D-072), recebe `false` e a interface mostra só o nome do Lead, sem link. É independente de `canEdit`: o dono atual de uma visita cancelada recebe `canEdit: false` e `lead.accessible: true`. O nome do Lead já era exibido a quem lê a visita; nenhum dado novo é exposto.
 
 ## D-079 — Escopo "Histórico" na lista de visitas
 

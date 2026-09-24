@@ -41,6 +41,42 @@ class VisitAccessTest extends VisitTestSupport {
         current.client().put("/api/visits/" + visitId, Map.of("companions", List.of())).andExpect(status().isOk());
     }
 
+    /** D-078: {@code lead.accessible} segue a regra de carteira do {@code GET /api/leads/{id}}. */
+    @Test
+    void leadAccessibleMatchesTheLeadWalletRule() throws Exception {
+        ApiClient admin = loggedIn(Role.ADMIN);
+        ProspectorSession former = loggedInProspector();
+        ProspectorSession current = loggedInProspector();
+        Lead lead = testData.lead(former.prospector());
+        UUID visitId = scheduledId(former.client(), lead.getId(), calendar.today().plusDays(2), List.of());
+        UUID cancelledId = scheduledId(former.client(), testData.lead(former.prospector()).getId(), calendar.today().plusDays(3), List.of());
+        former.client().patch("/api/visits/" + cancelledId + "/cancel", null)
+                .andExpect(jsonPath("$.lead.accessible").value(true));
+        former.client().get("/api/visits/" + visitId).andExpect(jsonPath("$.lead.accessible").value(true));
+
+        admin.patch("/api/leads/assign", Map.of("leadIds", List.of(lead.getId()), "prospectorId", current.prospector().getId()))
+                .andExpect(status().isOk());
+
+        // Responsável antigo: lê a visita, mas o Lead saiu da carteira dele.
+        former.client().get("/api/visits/" + visitId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lead.id").value(lead.getId().toString()))
+                .andExpect(jsonPath("$.lead.name").value(lead.getName()))
+                .andExpect(jsonPath("$.lead.accessible").value(false));
+        former.client().get("/api/leads/" + lead.getId()).andExpect(status().isNotFound());
+        JsonNode formerList = jsonMapper.readTree(former.client().get("/api/visits?leadId=" + lead.getId())
+                .andReturn().getResponse().getContentAsString());
+        assertThat(formerList.get("content").get(0).get("lead").get("accessible").asBoolean()).isFalse();
+
+        // Dono atual e ADMIN abrem o Lead; a visita cancelada do outro Lead continua acessível ao dono dela.
+        current.client().get("/api/visits/" + visitId).andExpect(jsonPath("$.lead.accessible").value(true));
+        current.client().get("/api/leads/" + lead.getId()).andExpect(status().isOk());
+        admin.get("/api/visits/" + visitId).andExpect(jsonPath("$.lead.accessible").value(true));
+        former.client().get("/api/visits/" + cancelledId)
+                .andExpect(jsonPath("$.canEdit").value(false))
+                .andExpect(jsonPath("$.lead.accessible").value(true));
+    }
+
     @Test
     void unrelatedProspectorGetsTheSame404AsANonexistentVisit() throws Exception {
         ProspectorSession owner = loggedInProspector();

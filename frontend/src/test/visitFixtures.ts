@@ -16,7 +16,7 @@ export function fakeCompanion(overrides: Partial<Companion> = {}): Companion {
 export function fakeVisit(overrides: Partial<Visit> = {}): Visit {
   return {
     id: 'v-1',
-    lead: { id: 'lead-1', name: 'Lead Fictício' },
+    lead: { id: 'lead-1', name: 'Lead Fictício', accessible: true },
     prospector: { id: 'p-1', name: 'Prospector Fictício' },
     scheduledDate: '2026-09-30',
     status: 'SCHEDULED',

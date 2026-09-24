@@ -25,7 +25,8 @@ export interface Companion {
 
 export interface Visit {
   id: string
-  lead: { id: string; name: string }
+  /** `accessible`: quem vê pode abrir o Lead, pela regra de carteira do backend (D-078). */
+  lead: { id: string; name: string; accessible: boolean }
   prospector: { id: string; name: string }
   scheduledDate: string
   status: VisitStatus

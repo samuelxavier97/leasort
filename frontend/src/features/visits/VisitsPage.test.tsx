@@ -40,8 +40,8 @@ function rowTexts() {
 describe('W9 — Agenda e Histórico', () => {
   it('Agenda pede as visitas SCHEDULED de hoje (no fuso da operação) em diante, em ordem de data', async () => {
     const requested = mockList('PROSPECTOR', [
-      fakeVisit({ id: 'v-1', scheduledDate: '2026-09-24', lead: { id: 'l-1', name: 'Lead Hoje' } }),
-      fakeVisit({ id: 'v-2', scheduledDate: '2026-10-02', lead: { id: 'l-2', name: 'Lead Outubro' }, companions: [] }),
+      fakeVisit({ id: 'v-1', scheduledDate: '2026-09-24', lead: { id: 'l-1', name: 'Lead Hoje', accessible: true } }),
+      fakeVisit({ id: 'v-2', scheduledDate: '2026-10-02', lead: { id: 'l-2', name: 'Lead Outubro', accessible: true }, companions: [] }),
     ])
     renderApp('/agenda')
 

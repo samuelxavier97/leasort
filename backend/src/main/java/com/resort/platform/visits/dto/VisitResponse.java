@@ -13,11 +13,11 @@ import java.util.UUID;
 
 /**
  * Visita como a API a entrega. CPF de acompanhante mascarado para quem não é ADMIN (§15, D-060).
- * {@code canEdit} só orienta a interface; o backend valida toda escrita (D-078).
+ * {@code canEdit} e {@code lead.accessible} só orientam a interface; o backend valida todo acesso (D-078).
  */
 public record VisitResponse(
         UUID id,
-        Ref lead,
+        LeadRef lead,
         Ref prospector,
         LocalDate scheduledDate,
         VisitStatus status,
@@ -31,6 +31,9 @@ public record VisitResponse(
 
     public record Ref(UUID id, String name) {}
 
+    /** {@code accessible}: quem vê a visita também pode abrir o Lead (regra de carteira, D-041). */
+    public record LeadRef(UUID id, String name, boolean accessible) {}
+
     public record CompanionResponse(UUID id, String name, String cpf, LocalDate birthDate, Relationship relationship) {
 
         static CompanionResponse of(VisitCompanion companion, Viewer viewer) {
@@ -43,10 +46,10 @@ public record VisitResponse(
         }
     }
 
-    public static VisitResponse of(Visit visit, Viewer viewer, boolean canWrite) {
+    public static VisitResponse of(Visit visit, Viewer viewer, boolean canWrite, boolean leadAccessible) {
         return new VisitResponse(
                 visit.getId(),
-                new Ref(visit.getLead().getId(), visit.getLead().getName()),
+                new LeadRef(visit.getLead().getId(), visit.getLead().getName(), leadAccessible),
                 new Ref(visit.getProspector().getId(), visit.getProspector().getUser().getName()),
                 visit.getScheduledDate(),
                 visit.getStatus(),

@@ -140,13 +140,22 @@ public class LeadService {
     /** Carteira (RN02): o PROSPECTOR só enxerga Leads atribuídos a ele; o resto é 404, sem revelar existência. */
     Lead findAccessible(UUID id, Viewer viewer) {
         Lead lead = leads.findWithProspectorById(id).orElseThrow(LeadService::leadNotFound);
-        if (!viewer.isAdmin()) {
-            UUID owner = lead.getProspector() == null ? null : lead.getProspector().getId();
-            if (!viewer.isProspector() || !Objects.equals(owner, viewer.prospectorId())) {
-                throw leadNotFound();
-            }
+        if (!isInWallet(lead, viewer)) {
+            throw leadNotFound();
         }
         return lead;
+    }
+
+    /**
+     * Regra de carteira do Lead (D-041): ADMIN, ou PROSPECTOR dono atual. É a mesma regra do
+     * {@code GET /api/leads/{id}}; as visitas a usam para escrita e para {@code lead.accessible} (D-078).
+     */
+    public static boolean isInWallet(Lead lead, Viewer viewer) {
+        if (viewer.isAdmin()) {
+            return true;
+        }
+        UUID owner = lead.getProspector() == null ? null : lead.getProspector().getId();
+        return viewer.isProspector() && Objects.equals(owner, viewer.prospectorId());
     }
 
     /**

@@ -41,14 +41,26 @@ describe('W4 — ações do detalhe da visita dependem de canEdit (D-078)', () =
     }
   })
 
-  it('quem só lê (responsável antigo) não vê ação nenhuma', async () => {
-    mockVisit('PROSPECTOR', fakeVisit({ canEdit: false }))
+  it('quem só lê (responsável antigo) não vê ação nenhuma e vê o Lead só pelo nome, sem link', async () => {
+    mockVisit(
+      'PROSPECTOR',
+      fakeVisit({ canEdit: false, lead: { id: 'lead-1', name: 'Lead Fictício', accessible: false } }),
+    )
     renderApp('/visitas/v-1')
 
     expect(await screen.findByText('Agendada')).toBeInTheDocument()
     for (const action of ACTIONS) {
       expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument()
     }
+    expect(screen.getByText('Lead Fictício')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Lead Fictício' })).not.toBeInTheDocument()
+  })
+
+  it('com o Lead na carteira, o nome é link para o Lead', async () => {
+    mockVisit('PROSPECTOR', fakeVisit())
+    renderApp('/visitas/v-1')
+
+    expect(await screen.findByRole('link', { name: 'Lead Fictício' })).toHaveAttribute('href', '/leads/lead-1')
   })
 
   it.each(['PROSPECTOR', 'ADMIN'] as Role[])(
@@ -60,6 +72,8 @@ describe('W4 — ações do detalhe da visita dependem de canEdit (D-078)', () =
       expect(await screen.findByText('Cancelada')).toBeInTheDocument()
       // Instante UTC exibido no fuso da operação: 02:30Z de 25/09 ainda é 24/09 em São Paulo.
       expect(screen.getByText('24/09/2026')).toBeInTheDocument()
+      // Sem ações, mas quem escreve continua abrindo o Lead: canEdit e lead.accessible são independentes.
+      expect(screen.getByRole('link', { name: 'Lead Fictício' })).toHaveAttribute('href', '/leads/lead-1')
       for (const action of ACTIONS) {
         expect(screen.queryByRole('button', { name: action })).not.toBeInTheDocument()
       }

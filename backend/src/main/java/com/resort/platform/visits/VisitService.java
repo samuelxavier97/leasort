@@ -9,6 +9,7 @@ import com.resort.platform.common.BusinessCalendar;
 import com.resort.platform.common.Cpf;
 import com.resort.platform.common.PageResponse;
 import com.resort.platform.leads.Lead;
+import com.resort.platform.leads.LeadService;
 import com.resort.platform.leads.LeadRepository;
 import com.resort.platform.leads.LeadStatus;
 import com.resort.platform.prospectors.Prospector;
@@ -92,7 +93,7 @@ public class VisitService {
 
     public VisitResponse create(CreateVisitRequest request, Viewer viewer) {
         Lead lead = leads.findByIdForUpdate(request.leadId()).orElseThrow(VisitService::leadNotFound);
-        if (!viewer.isAdmin() && !isOwner(lead, viewer)) {
+        if (!LeadService.isInWallet(lead, viewer)) {
             throw leadNotFound();
         }
         Prospector owner = schedulableOwner(lead);
@@ -231,18 +232,13 @@ public class VisitService {
     private boolean canRead(Visit visit, Viewer viewer) {
         return viewer.isAdmin()
                 || (viewer.isProspector()
-                        && (visit.getProspector().getId().equals(viewer.prospectorId()) || isOwner(visit.getLead(), viewer)));
+                        && (visit.getProspector().getId().equals(viewer.prospectorId())
+                                || LeadService.isInWallet(visit.getLead(), viewer)));
     }
 
     /** D-041: escreve só o dono atual do Lead ou o ADMIN. */
     private boolean canWrite(Visit visit, Viewer viewer) {
-        return viewer.isAdmin() || isOwner(visit.getLead(), viewer);
-    }
-
-    private static boolean isOwner(Lead lead, Viewer viewer) {
-        return viewer.isProspector()
-                && lead.getProspector() != null
-                && lead.getProspector().getId().equals(viewer.prospectorId());
+        return LeadService.isInWallet(visit.getLead(), viewer);
     }
 
     /**
@@ -265,7 +261,9 @@ public class VisitService {
     }
 
     private VisitResponse response(Visit visit, Viewer viewer) {
-        return VisitResponse.of(visit, viewer, canWrite(visit, viewer));
+        // Escrever na visita e abrir o Lead seguem a mesma regra de carteira (D-041, D-078).
+        boolean inWallet = canWrite(visit, viewer);
+        return VisitResponse.of(visit, viewer, inWallet, inWallet);
     }
 
     /** RN01, RN03 e D-073: o Lead precisa estar ativo, atribuído e com o dono ativo. */
