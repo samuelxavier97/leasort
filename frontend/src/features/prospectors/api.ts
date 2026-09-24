@@ -13,8 +13,8 @@ export interface Prospector {
 
 export const prospectorsQueryKey = ['prospectors'] as const
 
-export function listProspectors(page: number): Promise<Page<Prospector>> {
-  return api<Page<Prospector>>(`/api/prospectors?page=${page}`)
+export function listProspectors(page: number, size = 20): Promise<Page<Prospector>> {
+  return api<Page<Prospector>>(`/api/prospectors?page=${page}&size=${size}`)
 }
 
 export function updateProspector(id: string, input: { employeeCode: string; phone: string | null }): Promise<Prospector> {
