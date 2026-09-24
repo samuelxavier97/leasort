@@ -7,6 +7,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.resort.platform.ApiClient;
 import com.resort.platform.leads.Lead;
 import com.resort.platform.users.Role;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,6 +39,42 @@ class VisitAccessTest extends VisitTestSupport {
 
         current.client().get("/api/visits/" + visitId).andExpect(jsonPath("$.canEdit").value(true));
         current.client().put("/api/visits/" + visitId, Map.of("companions", List.of())).andExpect(status().isOk());
+    }
+
+    /** D-078: {@code lead.accessible} segue a regra de carteira do {@code GET /api/leads/{id}}. */
+    @Test
+    void leadAccessibleMatchesTheLeadWalletRule() throws Exception {
+        ApiClient admin = loggedIn(Role.ADMIN);
+        ProspectorSession former = loggedInProspector();
+        ProspectorSession current = loggedInProspector();
+        Lead lead = testData.lead(former.prospector());
+        UUID visitId = scheduledId(former.client(), lead.getId(), calendar.today().plusDays(2), List.of());
+        UUID cancelledId = scheduledId(former.client(), testData.lead(former.prospector()).getId(), calendar.today().plusDays(3), List.of());
+        former.client().patch("/api/visits/" + cancelledId + "/cancel", null)
+                .andExpect(jsonPath("$.lead.accessible").value(true));
+        former.client().get("/api/visits/" + visitId).andExpect(jsonPath("$.lead.accessible").value(true));
+
+        admin.patch("/api/leads/assign", Map.of("leadIds", List.of(lead.getId()), "prospectorId", current.prospector().getId()))
+                .andExpect(status().isOk());
+
+        // Responsável antigo: lê a visita, mas o Lead saiu da carteira dele.
+        former.client().get("/api/visits/" + visitId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.lead.id").value(lead.getId().toString()))
+                .andExpect(jsonPath("$.lead.name").value(lead.getName()))
+                .andExpect(jsonPath("$.lead.accessible").value(false));
+        former.client().get("/api/leads/" + lead.getId()).andExpect(status().isNotFound());
+        JsonNode formerList = jsonMapper.readTree(former.client().get("/api/visits?leadId=" + lead.getId())
+                .andReturn().getResponse().getContentAsString());
+        assertThat(formerList.get("content").get(0).get("lead").get("accessible").asBoolean()).isFalse();
+
+        // Dono atual e ADMIN abrem o Lead; a visita cancelada do outro Lead continua acessível ao dono dela.
+        current.client().get("/api/visits/" + visitId).andExpect(jsonPath("$.lead.accessible").value(true));
+        current.client().get("/api/leads/" + lead.getId()).andExpect(status().isOk());
+        admin.get("/api/visits/" + visitId).andExpect(jsonPath("$.lead.accessible").value(true));
+        former.client().get("/api/visits/" + cancelledId)
+                .andExpect(jsonPath("$.canEdit").value(false))
+                .andExpect(jsonPath("$.lead.accessible").value(true));
     }
 
     @Test
@@ -96,6 +134,31 @@ class VisitAccessTest extends VisitTestSupport {
         assertThat(ids(second.client(), "/api/visits?leadId=" + lead.getId() + "&prospectorId=" + UUID.randomUUID()))
                 .containsExactly(old.toString(), next.toString());
         admin.get("/api/visits?size=500").andExpect(jsonPath("$.size").value(100));
+    }
+
+    @Test
+    void historyScopeExcludesTheAgendaWithTheDayInTheOperationTimezone() throws Exception {
+        clock.set(Instant.parse("2026-03-10T15:00:00Z"));
+        ProspectorSession me = loggedInProspector();
+        UUID pastSoon = scheduledId(me.client(), testData.lead(me.prospector()).getId(), LocalDate.parse("2026-03-11"), List.of());
+        UUID cancelled = scheduledId(me.client(), testData.lead(me.prospector()).getId(), LocalDate.parse("2026-03-15"), List.of());
+        me.client().patch("/api/visits/" + cancelled + "/cancel", null).andExpect(status().isOk());
+        UUID upcoming = scheduledId(me.client(), testData.lead(me.prospector()).getId(), LocalDate.parse("2026-03-15"), List.of());
+
+        // 23:59:59 de 11/03 em São Paulo (já 12/03 em UTC): a visita de 11/03 ainda é da Agenda.
+        clock.set(Instant.parse("2026-03-12T02:59:59Z"));
+        assertThat(ids(me.client(), "/api/visits?scope=history&order=desc")).containsExactly(cancelled.toString());
+        assertThat(ids(me.client(), "/api/visits?status=SCHEDULED&from=2026-03-11"))
+                .containsExactly(pastSoon.toString(), upcoming.toString());
+
+        clock.set(Instant.parse("2026-03-12T03:00:00Z"));
+        assertThat(ids(me.client(), "/api/visits?scope=history&order=desc"))
+                .containsExactly(cancelled.toString(), pastSoon.toString());
+        assertThat(ids(me.client(), "/api/visits?scope=history&status=SCHEDULED")).containsExactly(pastSoon.toString());
+
+        me.client().get("/api/visits?scope=other")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
     private List<String> ids(ApiClient client, String path) throws Exception {

@@ -20,14 +20,33 @@ const MESSAGES: Record<string, string> = {
   PROSPECTOR_INACTIVE: 'O Prospector está inativo.',
   LEAD_NOT_FOUND: 'Lead não encontrado.',
   CPF_ALREADY_EXISTS: 'Já existe um Lead com este CPF.',
-  CPF_CHANGE_NOT_ALLOWED: 'O CPF deste Lead só pode ser alterado pelo administrador.',
+  CPF_CHANGE_NOT_ALLOWED: 'Este CPF só pode ser alterado pelo administrador.',
   INVALID_STATUS_TRANSITION: 'Esta mudança de status não é permitida para a situação atual do Lead.',
   FILE_TOO_LARGE: 'O arquivo é maior que o limite de 5 MB.',
+  VISIT_NOT_FOUND: 'Visita não encontrada.',
+  LEAD_INACTIVE: 'Este Lead foi descartado. Reative-o antes de agendar uma visita.',
+  LEAD_NOT_ASSIGNED: 'Este Lead não tem Prospector. Atribua um Prospector antes de agendar.',
+  VISIT_ALREADY_SCHEDULED: 'Este Lead já tem uma visita agendada.',
+  SCHEDULED_DATE_IN_PAST: 'A data da visita não pode ser anterior a hoje.',
+  SCHEDULED_DATE_TOO_FAR: 'A data da visita pode ser no máximo 12 meses a partir de hoje.',
+  SAME_DATE: 'Escolha uma data diferente da atual.',
+  TOO_MANY_COMPANIONS: 'A visita excede o número máximo de acompanhantes.',
+  VISIT_NOT_EDITABLE: 'Esta visita não pode mais ser alterada.',
+  COMPANION_NOT_FOUND: 'Um dos acompanhantes não pertence mais a esta visita. Recarregue a página.',
+  INVALID_VISIT_TRANSITION: 'Esta ação não é permitida para a situação atual da visita.',
   NOT_FOUND: 'Recurso não encontrado.',
 }
 
 /** Códigos cujo detalhe vindo do backend já é a melhor mensagem em português. */
-const DETAIL_CODES = new Set(['INVALID_HEADER', 'EMPTY_FILE', 'TOO_MANY_ROWS', 'INVALID_ENCODING', 'IMPORT_REJECTED'])
+const DETAIL_CODES = new Set([
+  'INVALID_HEADER',
+  'EMPTY_FILE',
+  'TOO_MANY_ROWS',
+  'INVALID_ENCODING',
+  'IMPORT_REJECTED',
+  // Traz o limite configurado em APP_MAX_COMPANIONS, que o frontend não fixa (D-075).
+  'TOO_MANY_COMPANIONS',
+])
 
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
