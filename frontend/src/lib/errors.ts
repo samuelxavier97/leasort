@@ -37,6 +37,7 @@ const MESSAGES: Record<string, string> = {
   INVITATION_NOT_FOUND: 'Convite não encontrado.',
   INVITATION_NOT_ACTIVE: 'Este convite não está mais ativo.',
   INVITATION_CODE_CONFLICT: 'Não foi possível gerar o código do convite. Tente novamente.',
+  TOO_MANY_VALIDATIONS: 'Muitas validações em pouco tempo. Aguarde um minuto e tente novamente.',
   NOT_FOUND: 'Recurso não encontrado.',
 }
 

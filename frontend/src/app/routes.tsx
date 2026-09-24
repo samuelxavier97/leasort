@@ -3,6 +3,8 @@ import { ChangePasswordPage } from '@/features/auth/ChangePasswordPage'
 import { LoginPage } from '@/features/auth/LoginPage'
 import { InvitationPage } from '@/features/invitations/InvitationPage'
 import { InvitationsPage } from '@/features/invitations/InvitationsPage'
+import { GatePage } from '@/features/access/GatePage'
+import { RecentAccessPage } from '@/features/access/RecentAccessPage'
 import { ImportLeadsPage } from '@/features/leads/ImportLeadsPage'
 import { LeadDetailPage } from '@/features/leads/LeadDetailPage'
 import { LeadsPage } from '@/features/leads/LeadsPage'
@@ -38,7 +40,12 @@ export const routes: RouteObject[] = [
           },
           {
             element: <RequireRole roles={['GATE']} />,
-            children: [{ path: '/portaria', element: <ComingSoonPage title="Validar Convite" /> }],
+            children: [{ path: '/portaria', element: <GatePage /> }],
+          },
+          {
+            // Rota própria, fora da proteção do /portaria: o ADMIN consulta acessos, mas não valida convites (§4.5).
+            element: <RequireRole roles={['GATE', 'ADMIN']} />,
+            children: [{ path: '/acessos', element: <RecentAccessPage /> }],
           },
           {
             element: <RequireRole roles={['HOST']} />,
