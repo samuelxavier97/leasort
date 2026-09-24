@@ -247,3 +247,63 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - limite de tentativas (login e validação) estourado: HTTP 429, Problem Details com `code` estável;
   - login de usuário inativo: o mesmo erro genérico de credenciais inválidas, com auditoria `LOGIN_FAILED`;
   - tela "Perfil" do Prospector: dados do próprio usuário somente leitura e troca de senha.
+
+## D-046 — Senha inicial gerada pelo sistema
+
+- **Decisão:** `POST /api/users` gera uma senha temporária (12 caracteres, `SecureRandom`, alfabeto sem caracteres ambíguos) e a devolve uma única vez, com `Cache-Control: no-store`, como no reset (D-016). O usuário nasce com `must_change_password = true`.
+- **Descartado:** o ADMIN digitar a senha inicial; ele passaria a conhecer uma senha que pode ser reaproveitada.
+
+## D-047 — Encerramento de sessões
+
+- **Decisão:** desativação, troca de role e redefinição de senha pelo ADMIN encerram todas as sessões do usuário alvo (Spring Session JDBC, busca pelo principal). A troca da própria senha gera um novo id para a sessão atual e encerra as demais sessões do usuário.
+- **Motivo:** a sessão guarda o perfil e a situação do momento do login; sem isso, um usuário desativado ou rebaixado continuaria operando até a sessão expirar.
+
+## D-048 — Último ADMIN ativo
+
+- **Decisão:** o último ADMIN ativo não pode ser desativado nem ter o perfil trocado; a tentativa retorna 409 `LAST_ADMIN`. Os ADMINs ativos são lidos com lock pessimista na mesma transação, para que duas alterações simultâneas não removam o último.
+
+## D-049 — Regras de senha
+
+- **Decisão:** mínimo de 10 caracteres (RN19), máximo de 72 bytes em UTF-8 (limite do BCrypt; a Spring Security 7 rejeita entradas maiores em vez de truncá-las) e a nova senha diferente da atual (`PASSWORD_UNCHANGED`).
+
+## D-050 — Auditoria de falhas de login
+
+- **Decisão:** `LOGIN_FAILED` grava `user_id` quando o e-mail pertence a um usuário e nulo caso contrário. O metadata tem apenas `reason` (`INVALID_CREDENTIALS`, `USER_INACTIVE` ou `RATE_LIMITED`). O e-mail digitado não é gravado. A resposta ao cliente é sempre a mesma (D-045).
+
+## D-051 — Auditoria da edição de Prospector
+
+- **Decisão:** `PUT /api/prospectors/{id}` é auditado como `USER_UPDATED` com `entity_type = PROSPECTOR` e `changedFields` no metadata, pois a §19 não tem ação própria para Prospector.
+
+## D-052 — Criação do primeiro ADMIN
+
+- **Decisão:** na inicialização, se já existe algum ADMIN, as variáveis `APP_BOOTSTRAP_ADMIN_*` são ignoradas. Se não existe, a aplicação cria o ADMIN com troca de senha obrigatória e auditoria `USER_CREATED` com `user_id` nulo. A aplicação **não sobe** quando não há ADMIN e falta alguma das variáveis, quando o e-mail é inválido, quando a senha viola a D-049 ou quando o e-mail já pertence a um usuário que não é ADMIN (ninguém é promovido em silêncio). A senha nunca aparece em log. Só o perfil `dev` tem valores padrão (fictícios).
+- **Descartado:** subir com um alerta no log; o sistema ficaria inutilizável sem administrador.
+
+## D-053 — Identidade do principal na sessão
+
+- **Decisão:** o nome do principal guardado na sessão é o id do usuário, não o e-mail, para que o índice de sessões por principal continue válido depois de uma troca de e-mail.
+
+## D-054 — CSRF para a SPA
+
+- **Decisão:** `csrf.spa()` com `CookieCsrfTokenRepository` (cookie `XSRF-TOKEN` legível pelo JavaScript, `Path=/`, `SameSite=Lax`, `Secure` em produção) e header `X-XSRF-TOKEN`. Um filtro carrega o token em toda requisição, pois o `spa()` o deixa diferido e o cookie não seria emitido. O login também exige CSRF; o frontend obtém o cookie com o `GET /api/auth/me` inicial. Não existe endpoint `/csrf`. No login e no logout o token é trocado.
+- **Nota:** o repositório por cookie é o padrão double-submit: o servidor compara header e cookie e não guarda estado. A rotação troca o cookie do navegador, e o token antigo deixa de corresponder a ele.
+
+## D-055 — Troca de senha obrigatória por authorities
+
+- **Decisão:** com `must_change_password`, a sessão recebe apenas a authority `PASSWORD_CHANGE_REQUIRED`, sem `ROLE_*`. As rotas `GET /api/auth/me`, `POST /api/auth/change-password` e `POST /api/auth/logout` exigem só autenticação; todo o resto de `/api/**` exige um perfil e responde 403 `PASSWORD_CHANGE_REQUIRED`. Rotas criadas nas próximas fases ficam bloqueadas automaticamente.
+- **Descartado:** filtro dedicado; seria mais uma peça para manter em sincronia com as regras de rota.
+
+## D-056 — springdoc-openapi só em desenvolvimento
+
+- **Decisão:** springdoc-openapi 3.1.x incluído agora. `/v3/api-docs` e o Swagger UI ficam habilitados e liberados na segurança apenas no perfil `dev`; nos demais perfis não existem.
+
+## D-057 — Usuário do banco sem ownership em produção
+
+- **Decisão:** na Fase 11, as migrations rodam com um usuário do PostgreSQL dono do schema, e a aplicação conecta com outro usuário, sem ownership das tabelas e só com os privilégios de DML necessários. Assim a aplicação não consegue remover nem desabilitar o trigger de `audit_logs` (D-028). Não é opcional.
+- **Impacto:** configuração separada de credenciais para o Flyway e para o datasource na Fase 11.
+
+## D-058 — Dispatch de erro liberado no Spring Security
+
+- **Contexto:** a Spring Security aplica autorização também ao dispatch interno de erro (`DispatcherType.ERROR`). Com a regra final `anyRequest().denyAll()` (D-055), o encaminhamento para `/error` seria negado, e um erro 500, ou um erro lançado por um filtro, chegaria ao cliente como 403.
+- **Decisão:** `dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` no `SecurityConfig`. A regra vale só para o dispatch interno de erro; nenhuma rota nova fica acessível por requisição direta.
+- **Impacto:** o status original do erro é preservado. A resposta continua em Problem Details, sem detalhes internos (`GlobalExceptionHandler` devolve `INTERNAL_ERROR` genérico).

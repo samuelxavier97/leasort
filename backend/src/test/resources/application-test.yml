@@ -1,0 +1,4 @@
+app:
+  bootstrap-admin:
+    email: admin@test.local
+    password: test-admin-password

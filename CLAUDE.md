@@ -69,6 +69,8 @@ cd frontend && npm test                # Vitest
 ```
 
 Health: `GET http://localhost:8080/actuator/health` → `{"status":"UP"}`.
+Swagger (só no perfil dev, D-056): `http://localhost:8080/swagger-ui/index.html`.
+ADMIN inicial no dev: `admin@resort.local` / `admin-dev-password`, com troca obrigatória no primeiro acesso (D-052).
 O jar exige perfil explícito: `SPRING_PROFILES_ACTIVE=prod java -jar backend/target/platform-*.jar`.
 Playwright entra na Fase 10.
 
