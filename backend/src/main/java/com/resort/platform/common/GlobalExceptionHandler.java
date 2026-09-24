@@ -28,6 +28,8 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             "users_email_uk", "EMAIL_ALREADY_EXISTS",
             "prospectors_employee_code_uk", "EMPLOYEE_CODE_ALREADY_EXISTS",
             "leads_cpf_uk", "CPF_ALREADY_EXISTS",
+            // Último seguro da unicidade do código (D-082); a mensagem do banco, com o código, não é repassada.
+            "invitations_code_uk", "INVITATION_CODE_CONFLICT",
             "visits_lead_scheduled_uk", "VISIT_ALREADY_SCHEDULED");
 
     @ExceptionHandler(ApiException.class)

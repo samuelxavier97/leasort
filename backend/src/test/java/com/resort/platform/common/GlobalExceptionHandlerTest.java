@@ -14,6 +14,7 @@ class GlobalExceptionHandlerTest {
     @ParameterizedTest
     @CsvSource({
         "visits_lead_scheduled_uk, VISIT_ALREADY_SCHEDULED",
+        "invitations_code_uk, INVITATION_CODE_CONFLICT",
         "leads_cpf_uk, CPF_ALREADY_EXISTS",
         "users_email_uk, EMAIL_ALREADY_EXISTS",
         "prospectors_employee_code_uk, EMPLOYEE_CODE_ALREADY_EXISTS",

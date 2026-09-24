@@ -43,9 +43,13 @@ public abstract class IntegrationTestSupport {
     @Autowired
     protected BusinessCalendar calendar;
 
+    @Autowired
+    protected ScriptedRandom random;
+
     @AfterEach
     void resetClock() {
         clock.reset();
+        random.reset();
     }
 
     /** Novo "navegador" sem cookies. */

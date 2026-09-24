@@ -2,6 +2,7 @@ package com.resort.platform.visits.dto;
 
 import com.resort.platform.auth.Viewer;
 import com.resort.platform.common.Cpf;
+import com.resort.platform.invitations.InvitationStatus;
 import com.resort.platform.visits.Relationship;
 import com.resort.platform.visits.Visit;
 import com.resort.platform.visits.VisitCompanion;
@@ -27,9 +28,13 @@ public record VisitResponse(
         Instant cancelledAt,
         Instant createdAt,
         Instant updatedAt,
-        boolean canEdit) {
+        boolean canEdit,
+        InvitationRef invitation) {
 
     public record Ref(UUID id, String name) {}
+
+    /** Convite atual da visita, sem o código (D-086); {@code null} em visita anterior à Fase 5 (D-071). */
+    public record InvitationRef(UUID id, InvitationStatus status) {}
 
     /** {@code accessible}: quem vê a visita também pode abrir o Lead (regra de carteira, D-041). */
     public record LeadRef(UUID id, String name, boolean accessible) {}
@@ -46,7 +51,8 @@ public record VisitResponse(
         }
     }
 
-    public static VisitResponse of(Visit visit, Viewer viewer, boolean canWrite, boolean leadAccessible) {
+    public static VisitResponse of(
+            Visit visit, Viewer viewer, boolean canWrite, boolean leadAccessible, InvitationRef invitation) {
         return new VisitResponse(
                 visit.getId(),
                 new LeadRef(visit.getLead().getId(), visit.getLead().getName(), leadAccessible),
@@ -59,6 +65,7 @@ public record VisitResponse(
                 visit.getCancelledAt(),
                 visit.getCreatedAt(),
                 visit.getUpdatedAt(),
-                canWrite && visit.getStatus() == VisitStatus.SCHEDULED);
+                canWrite && visit.getStatus() == VisitStatus.SCHEDULED,
+                invitation);
     }
 }

@@ -66,6 +66,7 @@ public class SecurityConfig {
                             .requestMatchers("/api/leads/import", "/api/leads/import/**").hasRole("ADMIN")
                             .requestMatchers("/api/leads", "/api/leads/**").hasAnyRole("ADMIN", "PROSPECTOR")
                             .requestMatchers("/api/visits", "/api/visits/**").hasAnyRole("ADMIN", "PROSPECTOR")
+                            .requestMatchers("/api/invitations", "/api/invitations/**").hasAnyRole("ADMIN", "PROSPECTOR")
                             .requestMatchers("/api/**").hasAnyRole("ADMIN", "PROSPECTOR", "GATE", "HOST")
                             .anyRequest().denyAll();
                 });

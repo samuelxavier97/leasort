@@ -15,18 +15,21 @@ class MigrationsTest extends IntegrationTestSupport {
     @Autowired
     Flyway flyway;
 
+    @Autowired
+    javax.sql.DataSource dataSource;
+
     @Test
     void appliesMigrationsAndCreatesTables() {
         assertThat(flyway.info().applied())
                 .extracting(MigrationInfo::getVersion)
                 .extracting(Object::toString)
-                .containsExactly("1", "2", "3", "4", "5", "6");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7");
         assertThat(jdbc.sql("""
                         SELECT table_name FROM information_schema.tables
                         WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history'
                         """).query(String.class).list())
                 .containsExactlyInAnyOrder(
-                        "users", "prospectors", "audit_logs", "spring_session", "spring_session_attributes", "leads", "visits", "visit_companions");
+                        "users", "prospectors", "audit_logs", "spring_session", "spring_session_attributes", "leads", "visits", "visit_companions", "invitations");
     }
 
     @Test
@@ -92,6 +95,86 @@ class MigrationsTest extends IntegrationTestSupport {
         jdbc.sql("DELETE FROM visits WHERE id = :id").param("id", scheduled).update();
         assertThat(jdbc.sql("SELECT count(*) FROM visit_companions WHERE visit_id = :id").param("id", scheduled)
                 .query(Long.class).single()).isZero();
+    }
+
+    /** I1: V7 (§8.6, D-001, D-003). */
+    @Test
+    void invitationsEnforceCodeStatusAndOneActivePerVisit() {
+        UUID lead = UUID.randomUUID();
+        jdbc.sql("INSERT INTO leads (id, name, status) VALUES (:id, 'Lead Fictício', 'VISIT_SCHEDULED')").param("id", lead).update();
+        UUID prospector = testData.prospectorOf(testData.user(com.resort.platform.users.Role.PROSPECTOR)).getId();
+        UUID visit = insertVisit(lead, prospector, "SCHEDULED");
+        String code = TestCodes.unique();
+
+        insertInvitation(visit, code, "ACTIVE", false);
+        insertInvitation(visit, TestCodes.unique(), "CANCELLED", true);
+
+        assertThatThrownBy(() -> insertInvitation(visit, TestCodes.unique(), "ACTIVE", false))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("invitations_visit_active_uk");
+        assertThatThrownBy(() -> insertInvitation(insertVisit(lead, prospector, "CANCELLED"), code, "CANCELLED", true))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("invitations_code_uk");
+        for (String invalid : new String[] {"ABCDEFGHI", "ABCDEFGHIJ", "ABCDEFGHJL", "ABCDEFGHJO", "ABCDEFGHJU", "abcdefghjk", "ABCDE-FGHJ"}) {
+            assertThatThrownBy(() -> insertInvitation(visit, invalid, "CANCELLED", true))
+                    .as(invalid)
+                    .isInstanceOf(DataIntegrityViolationException.class)
+                    .hasMessageContaining("invitations_code_ck");
+        }
+        assertThatThrownBy(() -> insertInvitation(visit, TestCodes.unique(), "PENDING", false))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("invitations_status_ck");
+        assertThatThrownBy(() -> insertInvitation(visit, TestCodes.unique(), "CANCELLED", false))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("invitations_cancelled_at_ck");
+        assertThatThrownBy(() -> insertInvitation(visit, TestCodes.unique(), "EXPIRED", true))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("invitations_cancelled_at_ck");
+    }
+
+    /**
+     * I31: a V7 roda sobre um banco com visitas da Fase 4, que ficam sem convite (D-071). Usa um schema
+     * separado no mesmo PostgreSQL, migrado até a V6, populado e então migrado até o fim.
+     */
+    @Test
+    void v7RunsOverPhase4DataLeavingOldVisitsWithoutInvitation() {
+        String schema = "fase4_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        try {
+            Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration")
+                    .target("6").load().migrate();
+            UUID user = UUID.randomUUID();
+            UUID prospector = UUID.randomUUID();
+            UUID lead = UUID.randomUUID();
+            UUID visit = UUID.randomUUID();
+            jdbc.sql("INSERT INTO %s.users (id, name, email, password_hash, role) VALUES (:id, 'P', :email, 'hash', 'PROSPECTOR')"
+                    .formatted(schema)).param("id", user).param("email", TestData.uniqueEmail("fase4")).update();
+            jdbc.sql("INSERT INTO %s.prospectors (id, user_id, employee_code) VALUES (:id, :user, 'F4-001')".formatted(schema))
+                    .param("id", prospector).param("user", user).update();
+            jdbc.sql("INSERT INTO %s.leads (id, name, status, prospector_id) VALUES (:id, 'Lead Fictício', 'VISIT_SCHEDULED', :p)"
+                    .formatted(schema)).param("id", lead).param("p", prospector).update();
+            jdbc.sql("""
+                            INSERT INTO %s.visits (id, lead_id, prospector_id, scheduled_date, status)
+                            VALUES (:id, :lead, :p, current_date + 1, 'SCHEDULED')
+                            """.formatted(schema))
+                    .param("id", visit).param("lead", lead).param("p", prospector).update();
+
+            Flyway.configure().dataSource(dataSource).schemas(schema).locations("classpath:db/migration").load().migrate();
+
+            assertThat(jdbc.sql("SELECT status FROM %s.visits WHERE id = :id".formatted(schema)).param("id", visit)
+                    .query(String.class).single()).isEqualTo("SCHEDULED");
+            assertThat(jdbc.sql("SELECT count(*) FROM %s.invitations".formatted(schema)).query(Long.class).single()).isZero();
+        } finally {
+            jdbc.sql("DROP SCHEMA IF EXISTS " + schema + " CASCADE").update();
+        }
+    }
+
+    private void insertInvitation(UUID visit, String code, String status, boolean cancelled) {
+        jdbc.sql("""
+                        INSERT INTO invitations (id, visit_id, code, status, expires_at, cancelled_at)
+                        VALUES (:id, :visit, :code, :status, now() + interval '1 day', CASE WHEN :cancelled THEN now() END)
+                        """)
+                .param("id", UUID.randomUUID()).param("visit", visit).param("code", code).param("status", status)
+                .param("cancelled", cancelled).update();
     }
 
     private UUID insertVisit(UUID lead, UUID prospector, String status) {

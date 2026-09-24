@@ -8,6 +8,7 @@ import com.resort.platform.common.AppProperties;
 import com.resort.platform.common.BusinessCalendar;
 import com.resort.platform.common.Cpf;
 import com.resort.platform.common.PageResponse;
+import com.resort.platform.invitations.InvitationService;
 import com.resort.platform.leads.Lead;
 import com.resort.platform.leads.LeadService;
 import com.resort.platform.leads.LeadRepository;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -42,7 +44,7 @@ import org.springframework.util.StringUtils;
 /**
  * Visitas e acompanhantes (SPEC §6.2, §7.2, RN03–RN05, RN13). Toda operação que muda o estado da
  * visita trava a linha do Lead, o que serializa agendamento, remarcação, cancelamento e descarte.
- * A partir da Fase 5, o convite é criado e cancelado nestas mesmas transações (RN06, D-071).
+ * O convite é criado e cancelado nestas mesmas transações (RN06, D-071, D-081).
  */
 @Service
 @Transactional
@@ -54,6 +56,7 @@ public class VisitService {
     private final VisitRepository visits;
     private final LeadRepository leads;
     private final AuditService audit;
+    private final InvitationService invitations;
     private final BusinessCalendar calendar;
     private final Clock clock;
     private final int maxCompanions;
@@ -62,12 +65,14 @@ public class VisitService {
             VisitRepository visits,
             LeadRepository leads,
             AuditService audit,
+            InvitationService invitations,
             BusinessCalendar calendar,
             Clock clock,
             AppProperties properties) {
         this.visits = visits;
         this.leads = leads;
         this.audit = audit;
+        this.invitations = invitations;
         this.calendar = calendar;
         this.clock = clock;
         this.maxCompanions = properties.maxCompanions();
@@ -78,8 +83,10 @@ public class VisitService {
         Sort.Direction direction = filter.descending() ? Sort.Direction.DESC : Sort.Direction.ASC;
         Pageable sorted = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(),
                 Sort.by(direction, "scheduledDate").and(Sort.by(direction, "createdAt")));
-        return PageResponse.of(
-                visits.findAll(specification(filter, viewer, calendar.today()), sorted), visit -> response(visit, viewer));
+        Page<Visit> page = visits.findAll(specification(filter, viewer, calendar.today()), sorted);
+        Map<UUID, VisitResponse.InvitationRef> current =
+                invitations.currentByVisit(page.getContent().stream().map(Visit::getId).toList());
+        return PageResponse.of(page, visit -> response(visit, viewer, current.get(visit.getId())));
     }
 
     @Transactional(readOnly = true)
@@ -113,6 +120,7 @@ public class VisitService {
             visit.addCompanion(companion.name().trim(), Cpf.normalize(companion.cpf()), companion.birthDate(), companion.relationship());
         }
         visits.save(visit);
+        invitations.issue(visit);
         LeadStatus from = lead.getStatus();
         lead.setStatus(LeadStatus.VISIT_SCHEDULED);
 
@@ -188,6 +196,7 @@ public class VisitService {
         validateDate(newDate);
         Prospector owner = schedulableOwner(lead);
 
+        invitations.cancelActive(old, "VISIT_RESCHEDULED");
         old.cancel(clock.instant());
         // O índice parcial exige que a visita antiga deixe de ser SCHEDULED antes de inserir a nova.
         visits.saveAndFlush(old);
@@ -195,6 +204,7 @@ public class VisitService {
         Visit replacement = new Visit(lead, owner, newDate, old.getNotes(), old.getHostNotes());
         old.getCompanions().forEach(companion -> replacement.getCompanions().add(companion.copyTo(replacement)));
         visits.save(replacement);
+        invitations.issue(replacement);
 
         audit.record(AuditAction.VISIT_RESCHEDULED, ENTITY_TYPE, old.getId(), Map.of("newVisitId", replacement.getId()));
         audit.record(AuditAction.VISIT_CREATED, ENTITY_TYPE, replacement.getId(),
@@ -207,6 +217,7 @@ public class VisitService {
         Lead lead = visit.getLead();
         requireScheduled(visit);
 
+        invitations.cancelActive(visit, "VISIT_CANCELLED");
         visit.cancel(clock.instant());
         audit.record(AuditAction.VISIT_CANCELLED, ENTITY_TYPE, visit.getId(), null);
         if (lead.getStatus() == LeadStatus.VISIT_SCHEDULED) {
@@ -223,21 +234,22 @@ public class VisitService {
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
     public void cancelScheduledForDiscard(Lead lead) {
         visits.findByLeadIdAndStatus(lead.getId(), VisitStatus.SCHEDULED).ifPresent(visit -> {
+            invitations.cancelActive(visit, "LEAD_DISCARDED");
             visit.cancel(clock.instant());
             audit.record(AuditAction.VISIT_CANCELLED, ENTITY_TYPE, visit.getId(), Map.of("reason", "LEAD_DISCARDED"));
         });
     }
 
-    /** D-041: lê quem é responsável pela visita ou dono atual do Lead. */
-    private boolean canRead(Visit visit, Viewer viewer) {
+    /** D-041: lê quem é responsável pela visita ou dono atual do Lead. Também vale para o convite. */
+    public static boolean canRead(Visit visit, Viewer viewer) {
         return viewer.isAdmin()
                 || (viewer.isProspector()
                         && (visit.getProspector().getId().equals(viewer.prospectorId())
                                 || LeadService.isInWallet(visit.getLead(), viewer)));
     }
 
-    /** D-041: escreve só o dono atual do Lead ou o ADMIN. */
-    private boolean canWrite(Visit visit, Viewer viewer) {
+    /** D-041: escreve só o dono atual do Lead ou o ADMIN. Também vale para a reemissão do convite. */
+    public static boolean canWrite(Visit visit, Viewer viewer) {
         return LeadService.isInWallet(visit.getLead(), viewer);
     }
 
@@ -261,9 +273,13 @@ public class VisitService {
     }
 
     private VisitResponse response(Visit visit, Viewer viewer) {
+        return response(visit, viewer, invitations.currentByVisit(List.of(visit.getId())).get(visit.getId()));
+    }
+
+    private static VisitResponse response(Visit visit, Viewer viewer, VisitResponse.InvitationRef invitation) {
         // Escrever na visita e abrir o Lead seguem a mesma regra de carteira (D-041, D-078).
         boolean inWallet = canWrite(visit, viewer);
-        return VisitResponse.of(visit, viewer, inWallet, inWallet);
+        return VisitResponse.of(visit, viewer, inWallet, inWallet, invitation);
     }
 
     /** RN01, RN03 e D-073: o Lead precisa estar ativo, atribuído e com o dono ativo. */

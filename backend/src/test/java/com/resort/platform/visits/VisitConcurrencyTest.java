@@ -58,6 +58,7 @@ class VisitConcurrencyTest extends VisitTestSupport {
 
         assertThat(statuses).containsExactlyInAnyOrder(201, 409);
         assertThat(scheduledCount(lead.getId())).isEqualTo(1);
+        assertThat(activeInvitations(lead.getId())).isEqualTo(1);
     }
 
     /** Descarte × agendamento: nunca um Lead descartado com visita agendada. */
@@ -73,6 +74,7 @@ class VisitConcurrencyTest extends VisitTestSupport {
 
         assertThat(leadStatus(lead.getId())).isEqualTo("CANCELLED");
         assertThat(scheduledCount(lead.getId())).isZero();
+        assertThat(activeInvitations(lead.getId())).isZero();
     }
 
     /** Descarte × cancelamento: o descarte nunca é desfeito por um cancelamento que leu estado antigo. */
@@ -91,6 +93,15 @@ class VisitConcurrencyTest extends VisitTestSupport {
 
         assertThat(leadStatus(lead.getId())).isEqualTo("CANCELLED");
         assertThat(visitStatus(UUID.fromString(visitId))).isEqualTo("CANCELLED");
+        assertThat(activeInvitations(lead.getId())).isZero();
+    }
+
+    /** I30: convites ACTIVE do Lead, que acompanham as visitas SCHEDULED (RN06). */
+    private long activeInvitations(UUID leadId) {
+        return jdbc.sql("""
+                        SELECT count(*) FROM invitations i JOIN visits v ON v.id = i.visit_id
+                        WHERE v.lead_id = :id AND i.status = 'ACTIVE'
+                        """).param("id", leadId).query(Long.class).single();
     }
 
     private HttpBrowser session() throws Exception {
