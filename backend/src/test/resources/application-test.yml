@@ -1,4 +1,7 @@
 app:
+  # O job roda de verdade às 00:15 em APP_TIMEZONE; nos testes ele é chamado diretamente (D-091).
+  jobs:
+    enabled: false
   bootstrap-admin:
     email: admin@test.local
     password: test-admin-password

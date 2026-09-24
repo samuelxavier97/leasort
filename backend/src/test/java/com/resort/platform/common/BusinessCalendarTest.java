@@ -50,6 +50,6 @@ class BusinessCalendarTest {
     }
 
     private BusinessCalendar calendar(String zone) {
-        return new BusinessCalendar(clock, new AppProperties(null, zone, 6));
+        return new BusinessCalendar(clock, new AppProperties(null, zone, 6, "PRINCIPAL"));
     }
 }

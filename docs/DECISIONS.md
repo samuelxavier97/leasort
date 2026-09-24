@@ -458,3 +458,24 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Nome do Resort:** constante única `RESORT_NAME` em `frontend/src/lib/resort.ts`, como o fuso da D-080. O valor atual é o genérico "Resort"; o nome oficial entra nessa constante quando for definido, sem outra mudança.
 - **Descartado:** variável de ambiente ou endpoint de configuração só para o nome; nenhum ganho para um texto fixo da operação.
 - **Navegação (confirmado na aprovação):** depois de agendar, remarcar ou reemitir, a tela abre o convite novo, porque o código novo precisa ser compartilhado.
+
+## D-088 — Respostas da validação e do registro na Portaria
+
+- **Decisão:** `POST /api/access/validate` e `POST /api/access/register` respondem 200 com `result` (`AUTHORIZED` ou `DENIED`); a negativa é resultado de negócio, não erro (confirmado na aprovação da Fase 6). Liberado na validação: `invitationId`, `leadName`, `scheduledDate`, `prospectorName` e `companions [{id, name, relationship}]`, só o que a §15 permite ao GATE. Liberado no registro: `invitationId`, `leadName`, `accessRecordId`, `entryAt`. Negado: `denialReason` e, só em `WRONG_DATE` e `EXPIRED`, `scheduledDate` (confirmado). Código em branco ou com mais de 64 caracteres: 400 `VALIDATION_ERROR`, sem registro, porque não é tentativa de acesso. `invitationId` inexistente no registro: 404 `INVITATION_NOT_FOUND`.
+- **Normalização (§12.1):** maiúsculas, prefixo `RSV:` só no início, sem espaços e hífens, O→0 e I/L→1; fora do formato Crockford de 10 caracteres, `INVALID_CODE`. `attempted_code` guarda o valor normalizado, cortado em 20 caracteres.
+
+## D-089 — Registro da entrada
+
+- **Decisão:** o registro trava o Lead e só depois o convite (`SELECT … FOR UPDATE` da §12.3), a mesma ordem da D-073 usada por cancelamento, remarcação, reemissão, descarte e job; a ordem inversa gera deadlock com essas operações (verificado por mutação: 20 de 25 execuções concorrentes falham). Revalida as verificações 2 a 5; negativa grava `AccessRecord DENIED` e `ACCESS_DENIED` e responde 200 com o motivo (clique duplo → `ALREADY_USED`). `presentCompanionIds` precisa conter só acompanhantes da visita, sem repetição (400 `COMPANION_NOT_FOUND` ou `VALIDATION_ERROR`); lista vazia é aceita. Índice único `access_records_invitation_authorized_uk` é o último seguro contra entrada dupla. Auditoria `ACCESS_VALIDATED` com `{access_record_id, visit_id, companions_present}` e `LEAD_STATUS_CHANGED` com `cause: ACCESS_REGISTERED` (confirmado). `created_at` e `entry_at` vêm do `Clock` da aplicação.
+
+## D-090 — Limite de validações
+
+- **Decisão:** `ValidationRateLimiter` em memória, janela deslizante de 60 s por usuário GATE, 30 chamadas (D-017). Acima disso, 429 `TOO_MANY_VALIDATIONS`, sem `AccessRecord` nem auditoria. Chamadas recusadas não contam. O registro não é limitado, porque só acontece depois de uma validação contada.
+
+## D-091 — Job noturno de expiração
+
+- **Decisão:** `InvitationExpiryJob` com `@Scheduled(cron = "0 15 0 * * *", zone = "${app.timezone}")`. Busca, sem lock, os convites `ACTIVE` com `expires_at` no passado, inclusive de noites em que não rodou, e processa cada um numa transação própria (`InvitationExpiryService.expire`): trava o Lead, relê o convite e, se ainda estiver `ACTIVE` e vencido, o convite vira `EXPIRED`, a visita `SCHEDULED` vira `NO_SHOW` e o Lead `VISIT_SCHEDULED` volta a `CONTACTED`, com `INVITATION_EXPIRED`, `VISIT_NO_SHOW` e `LEAD_STATUS_CHANGED` (`cause: VISIT_NO_SHOW`) e `user_id` nulo. Idempotente. Falha num item não impede os demais; o log leva só contagens e ids. O agendamento depende de `app.jobs.enabled` (padrão `true`, `false` no perfil test, em que o job é chamado diretamente). Visitas legadas sem convite (D-071) não são tocadas (confirmado).
+
+## D-092 — Acessos recentes
+
+- **Decisão:** `GET /api/access/recent` (GATE e ADMIN) devolve os registros de hoje em `APP_TIMEZONE`, do mais recente para o mais antigo, no máximo 50: `id`, `createdAt`, `result`, `denialReason`, `leadName` (quando há convite), `gate` e `validatedBy`. Nunca o código tentado nem CPF. A tela "Acessos" do ADMIN usa a mesma lista nesta fase (confirmado).

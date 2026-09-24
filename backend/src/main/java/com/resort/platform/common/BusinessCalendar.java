@@ -33,6 +33,11 @@ public class BusinessCalendar {
         return date.plusDays(1).atStartOfDay(zone).toInstant();
     }
 
+    /** Primeiro instante de {@code date} em {@code APP_TIMEZONE}. */
+    public Instant startOfDay(LocalDate date) {
+        return date.atStartOfDay(zone).toInstant();
+    }
+
     public ZoneId zone() {
         return zone;
     }
