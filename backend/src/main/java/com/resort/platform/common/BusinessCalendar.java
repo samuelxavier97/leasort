@@ -38,6 +38,11 @@ public class BusinessCalendar {
         return date.atStartOfDay(zone).toInstant();
     }
 
+    /** Dia de {@code instant} em {@code APP_TIMEZONE}. */
+    public LocalDate dateOf(Instant instant) {
+        return LocalDate.ofInstant(instant, zone);
+    }
+
     public ZoneId zone() {
         return zone;
     }

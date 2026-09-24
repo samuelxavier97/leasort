@@ -13,4 +13,8 @@ public record Viewer(UUID userId, Role role, UUID prospectorId) {
     public boolean isProspector() {
         return role == Role.PROSPECTOR;
     }
+
+    public boolean isHost() {
+        return role == Role.HOST;
+    }
 }
