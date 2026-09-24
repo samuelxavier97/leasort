@@ -25,7 +25,7 @@ Sistema web de gestão de Leads, visitas, acompanhantes, convites e controle de 
 
 ## Stack
 
-- Backend: Java 21, Spring Boot 3.x, Maven wrapper, Spring Security + Spring Session JDBC, Spring Data JPA, Bean Validation, Flyway, springdoc-openapi, ZXing.
+- Backend: Java 21, Spring Boot 4.1.x (D-036), Maven wrapper, Spring Security + Spring Session JDBC, Spring Data JPA, Bean Validation, Flyway, springdoc-openapi, ZXing.
 - Banco: PostgreSQL 16.
 - Frontend: React, TypeScript, Vite, React Router, TanStack Query, React Hook Form, Zod, Tailwind CSS, shadcn/ui, Recharts, `@zxing/browser`.
 - Testes: JUnit 5, Testcontainers, Vitest, Testing Library, Playwright.
@@ -54,16 +54,23 @@ docs/  nginx/  docker-compose.yml  docker-compose.prod.yml  .env.example
 
 ## Comandos
 
-Atualizar esta seção ao final da Fase 1 com os comandos reais.
+Requisitos: Java 21, Node 22+, Docker.
 
 ```bash
-docker compose up -d postgres          # banco de desenvolvimento
-cd backend && ./mvnw spring-boot:run   # API em :8080, perfil dev
-cd backend && ./mvnw verify            # build + testes (requer Docker para Testcontainers)
-cd frontend && npm run dev             # Vite em :5173 com proxy de /api
+cp .env.example .env                   # opcional; sem .env o compose usa resort/resort
+docker compose up -d postgres          # banco de desenvolvimento (PostgreSQL 16)
+cd backend && ./mvnw spring-boot:run   # API em :8080, perfil dev (só o plugin ativa dev; D-037)
+cd backend && ./mvnw verify            # build + testes (Testcontainers; requer Docker)
+cd frontend && npm run dev             # Vite em :5173 com proxy de /api para :8080
+cd frontend && npm run lint            # oxlint
+cd frontend && npm run typecheck       # tsc -b
 cd frontend && npm test                # Vitest
-cd frontend && npx playwright test     # E2E
+./scripts/verify.sh                    # CI local completo; o GitHub Actions roda o mesmo script (D-035)
 ```
+
+Health: `GET http://localhost:8080/actuator/health` → `{"status":"UP"}`.
+O jar exige perfil explícito: `SPRING_PROFILES_ACTIVE=prod java -jar backend/target/platform-*.jar`.
+Playwright entra na Fase 10.
 
 ## Fluxo de trabalho
 
