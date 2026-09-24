@@ -1,0 +1,31 @@
+import { ApiError } from './api'
+
+/** Mensagens em português para os códigos estáveis do backend. */
+const MESSAGES: Record<string, string> = {
+  INVALID_CREDENTIALS: 'E-mail ou senha inválidos.',
+  TOO_MANY_LOGIN_ATTEMPTS: 'Muitas tentativas de login. Aguarde alguns minutos e tente novamente.',
+  UNAUTHENTICATED: 'Sua sessão expirou. Entre novamente.',
+  ACCESS_DENIED: 'Você não tem permissão para esta ação.',
+  PASSWORD_CHANGE_REQUIRED: 'É necessário trocar a senha antes de continuar.',
+  CSRF_INVALID: 'Sua sessão foi atualizada. Tente novamente.',
+  VALIDATION_ERROR: 'Verifique os dados informados.',
+  INVALID_CURRENT_PASSWORD: 'Senha atual incorreta.',
+  PASSWORD_UNCHANGED: 'A nova senha deve ser diferente da atual.',
+  EMAIL_ALREADY_EXISTS: 'Já existe um usuário com este e-mail.',
+  EMPLOYEE_CODE_ALREADY_EXISTS: 'Já existe um Prospector com este código.',
+  ROLE_CHANGE_NOT_ALLOWED: 'Troca de perfil permitida apenas entre Administrador, Portaria e Anfitrião.',
+  LAST_ADMIN: 'Não é possível remover o último administrador ativo.',
+  USER_NOT_FOUND: 'Usuário não encontrado.',
+  PROSPECTOR_NOT_FOUND: 'Prospector não encontrado.',
+}
+
+export function errorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    // Para validação, o backend já devolve um detalhe específico em português.
+    if (error.code === 'VALIDATION_ERROR' && error.message && error.message !== 'Dados inválidos.') {
+      return error.message
+    }
+    return MESSAGES[error.code] ?? 'Não foi possível concluir a operação.'
+  }
+  return 'Falha de comunicação com o servidor.'
+}
