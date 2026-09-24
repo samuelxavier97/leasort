@@ -33,6 +33,7 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
     { to: '/prospectores', label: 'Prospectores' },
     { to: '/visitas', label: 'Visitas' },
     { to: '/convites', label: 'Convites' },
+    { to: '/acessos', label: 'Acessos' },
     { to: '/usuarios', label: 'Usuários' },
   ],
   PROSPECTOR: [
@@ -43,6 +44,9 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
     { to: '/historico', label: 'Histórico' },
     { to: '/perfil', label: 'Perfil' },
   ],
-  GATE: [{ to: '/portaria', label: 'Validar Convite' }],
+  GATE: [
+    { to: '/portaria', label: 'Validar Convite' },
+    { to: '/acessos', label: 'Acessos Recentes' },
+  ],
   HOST: [{ to: '/chegadas', label: 'Chegadas de hoje' }],
 }

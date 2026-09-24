@@ -1,5 +1,6 @@
 /**
- * Nome do Resort exibido na imagem de compartilhamento do convite (D-087). Constante única do
- * frontend, como o fuso da D-080: trocar aqui quando o nome oficial for definido.
+ * Nome do Resort exibido na imagem de compartilhamento do convite (D-087). Vem de
+ * `VITE_RESORT_NAME` no build de produção (Fase 11); sem a variável, ou com ela em branco, fica o
+ * genérico "Resort". O nome real nunca entra num arquivo do repositório.
  */
-export const RESORT_NAME = 'Resort'
+export const RESORT_NAME = import.meta.env.VITE_RESORT_NAME?.trim() || 'Resort'

@@ -1,5 +1,7 @@
-# Ambiente
+# Ambiente (o nome real do Resort e segredos só vivem fora do repositório; D-087)
 .env
+.env.*
+!.env.example
 
 # Backend
 backend/target/

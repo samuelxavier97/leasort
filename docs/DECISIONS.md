@@ -455,8 +455,8 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-087 — Imagem de compartilhamento do convite e nome do Resort
 
 - **Decisão:** a imagem é montada no frontend em canvas (§13), com 1080 × 1440 px: nome do Resort, "Convite de visita", nome do Lead, "Visita em DD/MM/AAAA", o QR vindo da API, o código `ABCDE-FGHJK` e a instrução "Apresente este código na portaria" (pedido na aprovação da Fase 5). Nada de CPF, telefone, e-mail, acompanhantes ou Prospector. O arquivo se chama `convite-ABCDE-FGHJK.png`. "Compartilhar" usa a Web Share API com arquivo quando `navigator.canShare({ files })` aceita; senão, baixa. "Baixar" sempre baixa. Cancelar o compartilhamento não é erro.
-- **Nome do Resort:** constante única `RESORT_NAME` em `frontend/src/lib/resort.ts`, como o fuso da D-080. O valor atual é o genérico "Resort"; o nome oficial entra nessa constante quando for definido, sem outra mudança.
-- **Descartado:** variável de ambiente ou endpoint de configuração só para o nome; nenhum ganho para um texto fixo da operação.
+- **Nome do Resort (revisto no início da Fase 6, a pedido):** constante única `RESORT_NAME` em `frontend/src/lib/resort.ts`, lida da variável de build do Vite `VITE_RESORT_NAME` (`import.meta.env.VITE_RESORT_NAME?.trim() || 'Resort'`). Sem a variável, ou com ela em branco, vale o genérico "Resort". O nome real é definido só no ambiente de build de produção, na Fase 11, e nunca entra num arquivo do repositório; `.env.*` (exceto `.env.example`) fica fora do Git.
+- **Descartado:** endpoint de configuração só para o nome (nenhum ganho para um texto fixo da operação); nome real numa constante ou num `.env` versionado (o repositório é público).
 - **Navegação (confirmado na aprovação):** depois de agendar, remarcar ou reemitir, a tela abre o convite novo, porque o código novo precisa ser compartilhado.
 
 ## D-088 — Respostas da validação e do registro na Portaria
@@ -479,3 +479,15 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-092 — Acessos recentes
 
 - **Decisão:** `GET /api/access/recent` (GATE e ADMIN) devolve os registros de hoje em `APP_TIMEZONE`, do mais recente para o mais antigo, no máximo 50: `id`, `createdAt`, `result`, `denialReason`, `leadName` (quando há convite), `gate` e `validatedBy`. Nunca o código tentado nem CPF. A tela "Acessos" do ADMIN usa a mesma lista nesta fase (confirmado).
+
+## D-093 — Scanner da Portaria e contexto seguro
+
+- **Decisão:** o scanner usa `BrowserQRCodeReader` do `@zxing/browser` (D-030), versão fixada em `0.2.1` no `package.json`, com a câmera traseira (`facingMode: environment`). O texto lido vai como está para `POST /api/access/validate`; quem normaliza é o backend (§12.1). A câmera para logo após a primeira leitura e ao sair da tela. Cada abertura cria o seu `<video>`: ao parar, o zxing limpa o vídeo que recebeu, e com um elemento compartilhado a dupla montagem do StrictMode apagava a imagem da câmera (achado na verificação manual). O navegador só libera a câmera em contexto seguro (`window.isSecureContext`): sem ele, sem permissão ou sem câmera, a tela avisa em português e mantém a digitação, e as próximas validações voltam à digitação com o campo limpo em vez de pedir a câmera de novo.
+- **Desenvolvimento:** `http://localhost` é contexto seguro, então a câmera funciona no computador. No celular, o acesso por `http://<ip-da-máquina>:5173` não é seguro; usar o redirecionamento de porta por USB do Chrome (`chrome://inspect` → *Port forwarding* `5173 → localhost:5173`) e abrir `http://localhost:5173` no celular (Problemas comuns do CLAUDE.md).
+- **Pendências da Fase 11:** HTTPS com HSTS; `Permissions-Policy: camera=(self)`; CSP que não bloqueie o vídeo da câmera (o `<video>` recebe um `MediaStream` via `srcObject`, sem URL externa; conferir `media-src` e `worker-src` se a política os restringir); teste real num celular com HTTPS.
+
+## D-094 — Tela da Portaria e lista de acessos
+
+- **Decisão:** `/portaria` só para GATE, com [ESCANEAR QR CODE] e [DIGITAR CÓDIGO] (§16.5). A máscara põe em maiúsculas, troca O por 0 e I/L por 1, remove o que está fora do alfabeto Crockford, limita a 10, exibe `XXXXX-XXXXX` e envia sem hífen; "VALIDAR" só habilita com 10 caracteres. Liberado mostra nome, data, Prospector e acompanhantes todos marcados; [CONFIRMAR ENTRADA] envia só os marcados. Além do que a §16.5 desenha, um "Cancelar" discreto volta ao scanner sem registrar, para o porteiro que validou o convite errado. Confirmar e [NOVA VALIDAÇÃO] voltam ao scanner (ou à digitação, sem câmera). Negativa no registro (clique duplo) cai na mesma tela de negado.
+- **Erro na validação (429, rede):** a mensagem aparece em português; se veio da câmera, a tela volta ao início em vez de reabrir o scanner, que leria o mesmo QR e repetiria o erro; se veio da digitação, o código digitado fica no campo.
+- **Acessos:** rota própria `/acessos` para GATE ("Acessos Recentes") e ADMIN ("Acessos"), fora da proteção do `/portaria`, porque o ADMIN consulta acessos mas não valida convites (§4.5). Mostra hora no fuso da operação, resultado, motivo, Lead, portaria e quem validou, na ordem da API (D-092).

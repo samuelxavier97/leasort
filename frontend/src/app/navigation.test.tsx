@@ -8,7 +8,7 @@ const cases: { role: Role; landing: string; heading: string; links: string[] }[]
     role: 'ADMIN',
     landing: '/dashboard',
     heading: 'Dashboard',
-    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Usuários'],
+    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Acessos', 'Usuários'],
   },
     // W8 e C11: §16.1 — o PROSPECTOR ganha Agenda, Convites e Histórico; o ADMIN ganha Visitas e Convites.
   {
@@ -17,7 +17,8 @@ const cases: { role: Role; landing: string; heading: string; links: string[] }[]
     heading: 'Dashboard',
     links: ['Dashboard', 'Meus Leads', 'Agenda', 'Convites', 'Histórico', 'Perfil'],
   },
-  { role: 'GATE', landing: '/portaria', heading: 'Validar Convite', links: ['Validar Convite'] },
+  // P1: o GATE cai em /portaria com "Validar Convite" e "Acessos Recentes"; o ADMIN ganha "Acessos".
+  { role: 'GATE', landing: '/portaria', heading: 'Validar Convite', links: ['Validar Convite', 'Acessos Recentes'] },
   { role: 'HOST', landing: '/chegadas', heading: 'Chegadas de hoje', links: ['Chegadas de hoje'] },
 ]
 
@@ -80,5 +81,34 @@ describe('página inicial e menu por perfil', () => {
 
     await waitFor(() => expect(router.state.location.pathname).not.toBe('/usuarios'))
     expect(screen.queryByRole('heading', { name: 'Usuários' })).not.toBeInTheDocument()
+  })
+
+  it.each(['ADMIN', 'PROSPECTOR', 'HOST'] as Role[])('%s não acessa /portaria', async (role) => {
+    mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me(role) } : undefined))
+    const { router } = renderApp('/portaria')
+
+    await waitFor(() => expect(router.state.location.pathname).not.toBe('/portaria'))
+    expect(screen.queryByRole('button', { name: 'ESCANEAR QR CODE' })).not.toBeInTheDocument()
+  })
+
+  it.each([
+    { role: 'GATE' as Role, heading: 'Acessos Recentes' },
+    { role: 'ADMIN' as Role, heading: 'Acessos' },
+  ])('$role abre /acessos com o título "$heading"', async ({ role, heading }) => {
+    mockFetch((_method, url) => {
+      if (url === '/api/auth/me') return { body: me(role) }
+      if (url === '/api/access/recent') return { body: [] }
+    })
+    const { router } = renderApp('/acessos')
+
+    expect(await screen.findByRole('heading', { name: heading })).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/acessos')
+  })
+
+  it.each(['PROSPECTOR', 'HOST'] as Role[])('%s não acessa /acessos', async (role) => {
+    mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me(role) } : undefined))
+    const { router } = renderApp('/acessos')
+
+    await waitFor(() => expect(router.state.location.pathname).not.toBe('/acessos'))
   })
 })
