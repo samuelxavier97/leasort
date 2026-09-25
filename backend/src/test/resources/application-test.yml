@@ -5,3 +5,9 @@ app:
   bootstrap-admin:
     email: admin@test.local
     password: test-admin-password
+spring:
+  jpa:
+    properties:
+      hibernate:
+        # Só nos testes: prova que o dashboard não carrega entidades (D-098).
+        generate_statistics: true

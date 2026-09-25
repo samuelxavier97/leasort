@@ -58,6 +58,11 @@ public class Visit {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    /** Preenchido se e somente se a visita está CANCELLED (CHECK da V10, D-098). */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "cancel_reason", length = 20)
+    private VisitCancelReason cancelReason;
+
     @OneToMany(mappedBy = "visit", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("createdAt ASC, id ASC")
     @BatchSize(size = 50)
@@ -97,9 +102,10 @@ public class Visit {
         this.status = VisitStatus.NO_SHOW;
     }
 
-    void cancel(Instant when) {
+    void cancel(Instant when, VisitCancelReason reason) {
         this.status = VisitStatus.CANCELLED;
         this.cancelledAt = when;
+        this.cancelReason = reason;
     }
 
     public UUID getId() {
@@ -140,6 +146,10 @@ public class Visit {
 
     public Instant getCancelledAt() {
         return cancelledAt;
+    }
+
+    public VisitCancelReason getCancelReason() {
+        return cancelReason;
     }
 
     public List<VisitCompanion> getCompanions() {

@@ -197,7 +197,7 @@ public class VisitService {
         Prospector owner = schedulableOwner(lead);
 
         invitations.cancelActive(old, "VISIT_RESCHEDULED");
-        old.cancel(clock.instant());
+        old.cancel(clock.instant(), VisitCancelReason.RESCHEDULED);
         // O índice parcial exige que a visita antiga deixe de ser SCHEDULED antes de inserir a nova.
         visits.saveAndFlush(old);
 
@@ -218,7 +218,7 @@ public class VisitService {
         requireScheduled(visit);
 
         invitations.cancelActive(visit, "VISIT_CANCELLED");
-        visit.cancel(clock.instant());
+        visit.cancel(clock.instant(), VisitCancelReason.CANCELLED_BY_USER);
         audit.record(AuditAction.VISIT_CANCELLED, ENTITY_TYPE, visit.getId(), null);
         if (lead.getStatus() == LeadStatus.VISIT_SCHEDULED) {
             lead.setStatus(LeadStatus.CONTACTED);
@@ -235,7 +235,7 @@ public class VisitService {
     public void cancelScheduledForDiscard(Lead lead) {
         visits.findByLeadIdAndStatus(lead.getId(), VisitStatus.SCHEDULED).ifPresent(visit -> {
             invitations.cancelActive(visit, "LEAD_DISCARDED");
-            visit.cancel(clock.instant());
+            visit.cancel(clock.instant(), VisitCancelReason.LEAD_DISCARDED);
             audit.record(AuditAction.VISIT_CANCELLED, ENTITY_TYPE, visit.getId(), Map.of("reason", "LEAD_DISCARDED"));
         });
     }

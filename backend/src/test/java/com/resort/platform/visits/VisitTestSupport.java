@@ -78,6 +78,9 @@ abstract class VisitTestSupport extends IntegrationTestSupport {
 
     /** Muda o status direto no banco para testar estados que só as Fases 6 e seguintes produzem. */
     void forceVisitStatus(UUID visitId, String status) {
-        jdbc.sql("UPDATE visits SET status = :status WHERE id = :id").param("status", status).param("id", visitId).update();
+        // O CHECK da V10 exige motivo se e somente se CANCELLED (D-098).
+        jdbc.sql("UPDATE visits SET status = :status, "
+                        + "cancel_reason = CASE WHEN :status = 'CANCELLED' THEN 'CANCELLED_BY_USER' END, "
+                        + "cancelled_at = CASE WHEN :status = 'CANCELLED' THEN now() END WHERE id = :id").param("status", status).param("id", visitId).update();
     }
 }

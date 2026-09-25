@@ -3,6 +3,8 @@ package com.resort.platform;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.resort.platform.users.Role;
+import java.util.List;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationInfo;
@@ -23,7 +25,7 @@ class MigrationsTest extends IntegrationTestSupport {
         assertThat(flyway.info().applied())
                 .extracting(MigrationInfo::getVersion)
                 .extracting(Object::toString)
-                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9");
+                .containsExactly("1", "2", "3", "4", "5", "6", "7", "8", "9", "10");
         assertThat(jdbc.sql("""
                         SELECT table_name FROM information_schema.tables
                         WHERE table_schema = 'public' AND table_name <> 'flyway_schema_history'
@@ -215,6 +217,25 @@ class MigrationsTest extends IntegrationTestSupport {
                 .hasMessageContaining("access_records_denial_reason_ck");
     }
 
+    /** V10 (D-098): motivo válido, presente se e somente se a visita está CANCELLED. */
+    @Test
+    void visitsRejectIncoherentCancelReason() {
+        UUID prospector = testData.prospectorOf(testData.user(Role.PROSPECTOR)).getId();
+        UUID lead = testData.lead(null).getId();
+        assertThatThrownBy(() -> insertVisit(lead, prospector, "CANCELLED", null))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("visits_cancel_reason_status_ck");
+        assertThatThrownBy(() -> insertVisit(lead, prospector, "SCHEDULED", "CANCELLED_BY_USER"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("visits_cancel_reason_status_ck");
+        assertThatThrownBy(() -> insertVisit(lead, prospector, "CANCELLED", "OTHER"))
+                .isInstanceOf(DataIntegrityViolationException.class)
+                .hasMessageContaining("visits_cancel_reason_ck");
+        for (String reason : List.of("RESCHEDULED", "CANCELLED_BY_USER", "LEAD_DISCARDED")) {
+            insertVisit(lead, prospector, "CANCELLED", reason);
+        }
+    }
+
     /** H1: V9, índice parcial das chegadas por entry_at (D-095). */
     @Test
     void arrivalsIndexIsPartialOnAuthorizedEntries() {
@@ -243,12 +264,18 @@ class MigrationsTest extends IntegrationTestSupport {
     }
 
     private UUID insertVisit(UUID lead, UUID prospector, String status) {
+        return insertVisit(lead, prospector, status, "CANCELLED".equals(status) ? "CANCELLED_BY_USER" : null);
+    }
+
+    private UUID insertVisit(UUID lead, UUID prospector, String status, String cancelReason) {
         UUID id = UUID.randomUUID();
         jdbc.sql("""
-                        INSERT INTO visits (id, lead_id, prospector_id, scheduled_date, status)
-                        VALUES (:id, :lead, :prospector, current_date, :status)
+                        INSERT INTO visits (id, lead_id, prospector_id, scheduled_date, status, cancel_reason, cancelled_at)
+                        VALUES (:id, :lead, :prospector, current_date, :status, :reason,
+                                CASE WHEN :status = 'CANCELLED' THEN now() END)
                         """)
-                .param("id", id).param("lead", lead).param("prospector", prospector).param("status", status).update();
+                .param("id", id).param("lead", lead).param("prospector", prospector).param("status", status)
+                .param("reason", cancelReason).update();
         return id;
     }
 
