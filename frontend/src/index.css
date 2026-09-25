@@ -29,6 +29,12 @@
 }
 
 :root {
+  /* Séries dos gráficos do dashboard: slots categóricos 1–4 da paleta validada (D-100). */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --chart-surface: #ffffff;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
@@ -51,6 +57,11 @@
 }
 
 .dark {
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --chart-surface: #1a1a19;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);
