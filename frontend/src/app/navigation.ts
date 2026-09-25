@@ -35,7 +35,9 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
     { to: '/convites', label: 'Convites' },
     { to: '/chegadas', label: 'Chegadas' },
     { to: '/acessos', label: 'Acessos' },
+    { to: '/exportacoes', label: 'Exportações' },
     { to: '/usuarios', label: 'Usuários' },
+    { to: '/auditoria', label: 'Auditoria' },
   ],
   PROSPECTOR: [
     { to: '/dashboard', label: 'Dashboard' },

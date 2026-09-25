@@ -8,7 +8,7 @@ const cases: { role: Role; landing: string; heading: string; links: string[] }[]
     role: 'ADMIN',
     landing: '/dashboard',
     heading: 'Dashboard',
-    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Chegadas', 'Acessos', 'Usuários'],
+    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Chegadas', 'Acessos', 'Exportações', 'Usuários', 'Auditoria'],
   },
     // W8 e C11: §16.1 — o PROSPECTOR ganha Agenda, Convites e Histórico; o ADMIN ganha Visitas e Convites.
   {
@@ -125,5 +125,26 @@ describe('página inicial e menu por perfil', () => {
     const { router } = renderApp(path)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/chegadas'))
+  })
+
+  // XF1: Exportações e Auditoria só para o ADMIN.
+  it.each(['PROSPECTOR', 'GATE', 'HOST'] as Role[])('%s não acessa /exportacoes nem /auditoria', async (role) => {
+    for (const path of ['/exportacoes', '/auditoria']) {
+      mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me(role) } : undefined))
+      const { router, unmount } = renderApp(path)
+
+      await waitFor(() => expect(router.state.location.pathname).not.toBe(path))
+      unmount()
+    }
+  })
+
+  it('ADMIN abre /exportacoes e /auditoria', async () => {
+    for (const [path, heading] of [['/exportacoes', 'Exportações'], ['/auditoria', 'Auditoria']]) {
+      mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me('ADMIN') } : { body: { content: [], page: 0, size: 20, totalElements: 0, totalPages: 0 } }))
+      const { unmount } = renderApp(path)
+
+      expect(await screen.findByRole('heading', { name: heading, level: 1 })).toBeInTheDocument()
+      unmount()
+    }
   })
 })
