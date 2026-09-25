@@ -1,6 +1,5 @@
 package com.resort.platform.auth;
 
-import com.resort.platform.prospectors.Prospector;
 import com.resort.platform.prospectors.ProspectorRepository;
 import com.resort.platform.users.Role;
 import org.springframework.stereotype.Component;
@@ -19,6 +18,6 @@ public class ViewerResolver {
             return new Viewer(user.id(), user.role(), null);
         }
         // Todo usuário PROSPECTOR tem registro em prospectors (criado na mesma transação).
-        return new Viewer(user.id(), user.role(), prospectors.findByUserId(user.id()).map(Prospector::getId).orElseThrow());
+        return new Viewer(user.id(), user.role(), prospectors.findIdByUserId(user.id()).orElseThrow());
     }
 }

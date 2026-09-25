@@ -8,6 +8,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface ProspectorRepository extends JpaRepository<Prospector, UUID> {
 
@@ -19,6 +21,10 @@ public interface ProspectorRepository extends JpaRepository<Prospector, UUID> {
     Optional<Prospector> findWithUserById(UUID id);
 
     Optional<Prospector> findByUserId(UUID userId);
+
+    /** Só o id, sem carregar a entidade: usado em toda requisição de PROSPECTOR (ViewerResolver). */
+    @Query("select p.id from Prospector p where p.user.id = :userId")
+    Optional<UUID> findIdByUserId(@Param("userId") UUID userId);
 
     @EntityGraph(attributePaths = "user")
     List<Prospector> findByEmployeeCodeIn(Collection<String> employeeCodes);

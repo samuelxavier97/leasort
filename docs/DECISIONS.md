@@ -508,3 +508,24 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Polling:** `refetchInterval` de 30 s, só com a lista de hoje; desligado ao sair da tela. Os tratamentos de 401, troca de senha e falha de rede ou 5xx são os da D-095.
 - **Ficha e impressão:** idade como "1 ano", "N anos", "menos de 1 ano" para bebês e "—" sem data de nascimento; ausentes sem idade; "Nenhum" e "Sem observações" nos vazios. Impressão por `@media print` com `@page { size: A4; margin: 12mm }`: cabeçalho do sistema, menu, botões e avisos ficam de fora (variante `print:` do Tailwind), sem biblioteca. Verificado no Chromium com o pior caso (6 acompanhantes, limite padrão de `APP_MAX_COMPANIONS`, e 2.000 caracteres de observações): uma página A4, com folga.
 - **Celular:** as células da lista quebram linha e o título da coluna de presentes fica "Presentes" em telas estreitas (o nome acessível continua "Acompanhantes presentes"), para o link da ficha não sair da tela.
+
+## D-098 — Definições do dashboard
+
+- **Período:** `from` e `to` (`YYYY-MM-DD`, os dois extremos incluídos), em dias de `APP_TIMEZONE`; sem parâmetros, os 30 dias até hoje (hoje − 29 a hoje); máximo de 366 dias (400 `PERIOD_TOO_LONG`); só uma das datas ou `from > to` é 400 `VALIDATION_ERROR`; data malformada, 400 `BAD_REQUEST` (D-095). Datas futuras valem, porque há visitas agendadas até 12 meses à frente (D-074). As séries trazem todos os dias do período, inclusive os de valor zero, em ordem crescente. A resposta traz `from`, `to` e `today`.
+- **Crédito (D-013):** visitas, convites e entradas contam por `visits.prospector_id`; Leads contam pelo dono atual (`leads.prospector_id`). O filtro `prospectorId` do ADMIN usa a mesma regra; o PROSPECTOR vê sempre o Prospector da sessão, pode escolher `from` e `to`, e qualquer `prospectorId`, mesmo o próprio, é 403 `ACCESS_DENIED` (confirmado). `prospectorId` inexistente para o ADMIN: 404 `PROSPECTOR_NOT_FOUND`. GATE e HOST: 403; `access-by-day` só ADMIN.
+- **Indicadores** (fotografia = estado atual; período = contagem entre `from` e `to`):
+  - *Total de Leads*, *Leads atribuídos* e *Meus Leads*: fotografia, sem Leads `CANCELLED` (D-008, confirmado); atribuídos = com `prospector_id`.
+  - *Visitas agendadas*: fotografia, `SCHEDULED` com `scheduled_date >= hoje`; uma `SCHEDULED` de data passada (job ainda não rodou, ou legada) não conta.
+  - *Visitas hoje*: fotografia, `scheduled_date = hoje` com status `SCHEDULED` ou `COMPLETED`.
+  - *Convites ativos*: fotografia, `ACTIVE` com `expires_at > agora`, o critério da Portaria: um convite vencido que o job não processou não conta.
+  - *Visitas realizadas*, *No-show*, *Cancelamentos*: período pela `scheduled_date`, com status `COMPLETED`, `NO_SHOW` e `CANCELLED` com `cancel_reason <> 'RESCHEDULED'`.
+  - *Entradas realizadas*: período pelo `entry_at` em `APP_TIMEZONE`; conta pessoas, o Lead mais os acompanhantes presentes de cada entrada liberada (confirmado).
+  - *Próximas visitas* (PROSPECTOR): `SCHEDULED` a partir de hoje, pela leitura da D-041 (responsável ou dono atual), no máximo 10, por data, nome do Lead e id; `canEdit` só para o dono atual (D-078). Pode diferir do cartão "Visitas agendadas", que conta por crédito.
+  - *Visitas por dia*: `scheduled_date`, com agendadas, realizadas, no-show e cancelamentos (sem remarcação).
+  - *Acessos por dia* (só ADMIN): registros liberados pelo `entry_at` e negados pelo `created_at`, ambos em `APP_TIMEZONE`; com o filtro de Prospector entram só os registros ligados a um convite dele, então `INVALID_CODE` aparece só na visão geral.
+- **Motivo do cancelamento (confirmado na aprovação):** coluna `visits.cancel_reason` (`RESCHEDULED`, `CANCELLED_BY_USER`, `LEAD_DISCARDED`), preenchida se e somente se `status = 'CANCELLED'` (CHECKs da V10) pelas três transações que cancelam (D-076, cancelamento e descarte do Lead, D-040). A V10 classifica as canceladas anteriores pela auditoria `VISIT_RESCHEDULED`; as demais ficam `CANCELLED_BY_USER`. A auditoria não é fonte de estado do domínio: a exportação (Fase 9) precisa distinguir remarcação de cancelamento, e uma retenção futura da auditoria mudaria os números em silêncio.
+- **Consultas:** SQL agregado via `JdbcClient`, sem carregar entidades e com número fixo de consultas por requisição (verificado com estatísticas do Hibernate e um contador de statements no perfil `test`); o `ViewerResolver` passou a ler só o id do Prospector. Só índices já existentes. Leitura sem auditoria.
+
+## D-099 — Filtro de status do dashboard retirado
+
+- **Decisão:** a §16.7 lista "status" entre os filtros do ADMIN, mas cada indicador de visita já é o recorte por um status (agendadas, realizadas, no-show, cancelamentos). Um filtro de status zeraria os demais cartões ou teria dois significados na mesma tela. Os filtros do ADMIN são período e Prospector (confirmado na aprovação da Fase 8).
