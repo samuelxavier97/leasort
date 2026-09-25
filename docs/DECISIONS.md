@@ -519,7 +519,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - *Visitas hoje*: fotografia, `scheduled_date = hoje` com status `SCHEDULED` ou `COMPLETED`.
   - *Convites ativos*: fotografia, `ACTIVE` com `expires_at > agora`, o critério da Portaria: um convite vencido que o job não processou não conta.
   - *Visitas realizadas*, *No-show*, *Cancelamentos*: período pela `scheduled_date`, com status `COMPLETED`, `NO_SHOW` e `CANCELLED` com `cancel_reason <> 'RESCHEDULED'`.
-  - *Entradas realizadas*: período pelo `entry_at` em `APP_TIMEZONE`; conta pessoas, o Lead mais os acompanhantes presentes de cada entrada liberada (confirmado).
+  - *Pessoas recebidas* (a §16.7 chama de "Entradas realizadas"; rótulo trocado na aprovação do frontend da Fase 8, porque o número conta pessoas, não registros; o campo da API continua `entries`): período pelo `entry_at` em `APP_TIMEZONE`; o Lead mais os acompanhantes presentes de cada entrada liberada (confirmado).
   - *Próximas visitas* (PROSPECTOR): `SCHEDULED` a partir de hoje, pela leitura da D-041 (responsável ou dono atual), no máximo 10, por data, nome do Lead e id; `canEdit` só para o dono atual (D-078). Pode diferir do cartão "Visitas agendadas", que conta por crédito.
   - *Visitas por dia*: `scheduled_date`, com agendadas, realizadas, no-show e cancelamentos (sem remarcação).
   - *Acessos por dia* (só ADMIN): registros liberados pelo `entry_at` e negados pelo `created_at`, ambos em `APP_TIMEZONE`; com o filtro de Prospector entram só os registros ligados a um convite dele, então `INVALID_CODE` aparece só na visão geral.
@@ -529,3 +529,10 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-099 — Filtro de status do dashboard retirado
 
 - **Decisão:** a §16.7 lista "status" entre os filtros do ADMIN, mas cada indicador de visita já é o recorte por um status (agendadas, realizadas, no-show, cancelamentos). Um filtro de status zeraria os demais cartões ou teria dois significados na mesma tela. Os filtros do ADMIN são período e Prospector (confirmado na aprovação da Fase 8).
+
+## D-100 — Telas do dashboard
+
+- **Decisão:** `/dashboard` é a tela inicial do ADMIN e do PROSPECTOR (§16.1). O ADMIN tem filtros de período (duas datas, iniciando nos 30 dias até hoje pela D-080) e Prospector numa linha acima dos números, aplicados juntos ao resumo e às duas séries; período com início depois do fim não é enviado e mostra a mensagem. O PROSPECTOR não tem filtros e não envia parâmetros: cinco cartões, próximas visitas (link para a visita e para a Agenda) e as próprias visitas por dia. Cada cartão diz se é fotografia ("agora", "de hoje em diante") ou contagem ("no período", "últimos 30 dias").
+- **Gráficos:** Recharts `3.10.1` e `react-is` `19.3.0` (a mesma versão do React, par exigido pelo Recharts), fixados no `package.json`. Colunas empilhadas por dia, com um só eixo, todos os dias do período e barras de no máximo 24 px. Cores pelos slots categóricos 1 a 4 da paleta validada (azul, laranja, verde-água, amarelo), em ordem fixa por série: Agendadas, Realizadas, No-show, Cancelamentos; Liberados e Negados usam os slots 1 e 2. O validador de paleta aprovou as quatro cores para pares adjacentes (CVD e visão normal), com contraste abaixo de 3:1 no verde-água e no amarelo: por isso cada gráfico tem legenda sempre visível, tooltip e a tabela equivalente ("Ver tabela"), com todos os dias em DD/MM/AAAA. Texto da legenda na cor de texto; a cor da série fica só no marcador.
+- **Datas:** o período e as tabelas usam DD/MM/AAAA; o campo de data é o nativo do navegador, que segue o idioma do aparelho (DD/MM/AAAA em pt-BR).
+- **Removido:** `ComingSoonPage`, o marcador "Em breve" das Fases 2 a 7, sem uso depois do dashboard.

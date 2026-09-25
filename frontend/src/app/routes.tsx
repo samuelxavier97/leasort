@@ -5,6 +5,7 @@ import { InvitationPage } from '@/features/invitations/InvitationPage'
 import { InvitationsPage } from '@/features/invitations/InvitationsPage'
 import { GatePage } from '@/features/access/GatePage'
 import { RecentAccessPage } from '@/features/access/RecentAccessPage'
+import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { ArrivalsPage } from '@/features/arrivals/ArrivalsPage'
 import { VisitSheetPage } from '@/features/arrivals/VisitSheetPage'
 import { ImportLeadsPage } from '@/features/leads/ImportLeadsPage'
@@ -16,7 +17,6 @@ import { UsersPage } from '@/features/users/UsersPage'
 import { VisitDetailPage } from '@/features/visits/VisitDetailPage'
 import { VisitsPage } from '@/features/visits/VisitsPage'
 import { AppLayout } from './AppLayout'
-import { ComingSoonPage } from './ComingSoonPage'
 import { HomeRedirect, RequireAuth, RequireRole } from './guards'
 
 export const routes: RouteObject[] = [
@@ -32,7 +32,7 @@ export const routes: RouteObject[] = [
           {
             element: <RequireRole roles={['ADMIN', 'PROSPECTOR']} />,
             children: [
-              { path: '/dashboard', element: <ComingSoonPage title="Dashboard" /> },
+              { path: '/dashboard', element: <DashboardPage /> },
               { path: '/leads', element: <LeadsPage /> },
               { path: '/leads/:id', element: <LeadDetailPage /> },
               { path: '/visitas/:id', element: <VisitDetailPage /> },
