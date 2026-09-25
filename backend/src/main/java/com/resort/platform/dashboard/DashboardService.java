@@ -3,6 +3,7 @@ package com.resort.platform.dashboard;
 import com.resort.platform.auth.Viewer;
 import com.resort.platform.common.ApiException;
 import com.resort.platform.common.BusinessCalendar;
+import com.resort.platform.common.DatePeriods;
 import com.resort.platform.dashboard.dto.AccessByDayResponse;
 import com.resort.platform.dashboard.dto.AdminSummary;
 import com.resort.platform.dashboard.dto.DashboardPeriod;
@@ -89,19 +90,10 @@ public class DashboardService {
     }
 
     static DashboardPeriod period(LocalDate from, LocalDate to, LocalDate today) {
-        if (from == null && to == null) {
+        if (!DatePeriods.validate(from, to)) {
             return new DashboardPeriod(today.minusDays(DEFAULT_DAYS - 1L), today);
         }
-        if (from == null || to == null) {
-            throw ApiException.badRequest("VALIDATION_ERROR", "Informe as duas datas do período.");
-        }
-        if (from.isAfter(to)) {
-            throw ApiException.badRequest("VALIDATION_ERROR", "A data inicial não pode ser posterior à final.");
-        }
-        DashboardPeriod period = new DashboardPeriod(from, to);
-        if (period.days() > MAX_DAYS) {
-            throw ApiException.badRequest("PERIOD_TOO_LONG", "O período pode ter no máximo " + MAX_DAYS + " dias.");
-        }
-        return period;
+        DatePeriods.requireAtMost(from, to, MAX_DAYS);
+        return new DashboardPeriod(from, to);
     }
 }

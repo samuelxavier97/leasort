@@ -16,6 +16,9 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+    # Exportação em streaming (D-101): o padrão de 30 s do Tomcat cortaria o download da base inteira.
+    async:
+      request-timeout: 30m
   session:
     jdbc:
       initialize-schema: never
