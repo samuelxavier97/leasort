@@ -163,7 +163,9 @@ describe('C3 — reemitir', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/convites/i-2'))
     expect(reissues).toBe(1)
-    expect(await screen.findByTestId('invitation-code')).toHaveTextContent(created.formattedCode)
+    // A URL muda antes de a página renderizar o convite novo, e o código antigo segue na tela nesse intervalo:
+    // espera pelo código novo, não só pela existência do elemento.
+    await waitFor(() => expect(screen.getByTestId('invitation-code')).toHaveTextContent(created.formattedCode))
   })
 
   it('409 INVITATION_NOT_ACTIVE aparece em português', async () => {
