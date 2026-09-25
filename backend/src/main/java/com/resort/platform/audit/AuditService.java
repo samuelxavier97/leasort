@@ -46,6 +46,15 @@ public class AuditService {
     /** Registra a ação em nome de um usuário explícito; {@code null} indica o sistema. */
     @Transactional(propagation = Propagation.MANDATORY)
     public void recordAs(UUID userId, AuditAction action, String entityType, UUID entityId, Map<String, ?> metadata) {
+        recordFrom(userId, currentIp(), action, entityType, entityId, metadata);
+    }
+
+    /**
+     * Com usuário e IP explícitos, capturados por quem chama: para trabalho fora da thread da requisição, como a
+     * exportação em streaming (D-101).
+     */
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void recordFrom(UUID userId, String ip, AuditAction action, String entityType, UUID entityId, Map<String, ?> metadata) {
         // Garante que entidades novas referenciadas pela auditoria já estejam no banco.
         entityManager.flush();
         jdbc.sql("""
@@ -58,7 +67,7 @@ public class AuditService {
                 .param("entityType", entityType)
                 .param("entityId", entityId)
                 .param("metadata", metadata == null ? null : jsonMapper.writeValueAsString(metadata))
-                .param("ip", currentIp())
+                .param("ip", ip)
                 .param("createdAt", OffsetDateTime.now(clock))
                 .update();
     }
