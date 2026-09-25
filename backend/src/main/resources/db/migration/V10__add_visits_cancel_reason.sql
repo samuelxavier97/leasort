@@ -3,12 +3,20 @@
 ALTER TABLE visits ADD COLUMN cancel_reason varchar(20);
 
 -- Visitas canceladas antes desta migration: a remarcação é reconhecida pela auditoria VISIT_RESCHEDULED gravada
--- na visita antiga; as demais ficam como cancelamento pelo usuário.
+-- na visita antiga; o descarte do Lead, pelo VISIT_CANCELLED com reason LEAD_DISCARDED no metadado; as demais
+-- ficam como cancelamento pelo usuário.
 UPDATE visits v
 SET cancel_reason = 'RESCHEDULED'
 WHERE v.status = 'CANCELLED'
   AND EXISTS (SELECT 1 FROM audit_logs a
               WHERE a.entity_type = 'VISIT' AND a.entity_id = v.id AND a.action = 'VISIT_RESCHEDULED');
+
+UPDATE visits v
+SET cancel_reason = 'LEAD_DISCARDED'
+WHERE v.status = 'CANCELLED' AND v.cancel_reason IS NULL
+  AND EXISTS (SELECT 1 FROM audit_logs a
+              WHERE a.entity_type = 'VISIT' AND a.entity_id = v.id AND a.action = 'VISIT_CANCELLED'
+                AND a.metadata ->> 'reason' = 'LEAD_DISCARDED');
 
 UPDATE visits
 SET cancel_reason = 'CANCELLED_BY_USER'

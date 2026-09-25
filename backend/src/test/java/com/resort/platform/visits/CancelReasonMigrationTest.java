@@ -13,7 +13,8 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
  * A V10 classifica as visitas canceladas anteriores a ela (D-098): remarcação pela auditoria
- * VISIT_RESCHEDULED, as demais como cancelamento pelo usuário. Roda as migrations num schema próprio, até a
+ * VISIT_RESCHEDULED, descarte do Lead pelo VISIT_CANCELLED com reason LEAD_DISCARDED, as demais como
+ * cancelamento pelo usuário. Roda as migrations num schema próprio, até a
  * V9, insere os dados antigos e aplica a V10.
  */
 class CancelReasonMigrationTest extends IntegrationTestSupport {
@@ -34,13 +35,14 @@ class CancelReasonMigrationTest extends IntegrationTestSupport {
         UUID lead = UUID.randomUUID();
         UUID rescheduled = UUID.randomUUID();
         UUID cancelled = UUID.randomUUID();
+        UUID discarded = UUID.randomUUID();
         UUID scheduled = UUID.randomUUID();
         sql.sql("INSERT INTO " + SCHEMA + ".users (id, name, email, password_hash, role) VALUES (:id, 'X', 'mig@test.local', 'h', 'PROSPECTOR')")
                 .param("id", user).update();
         sql.sql("INSERT INTO " + SCHEMA + ".prospectors (id, user_id, employee_code) VALUES (:id, :user, 'MIG-1')")
                 .param("id", prospector).param("user", user).update();
         sql.sql("INSERT INTO " + SCHEMA + ".leads (id, name) VALUES (:id, 'Lead Fictício')").param("id", lead).update();
-        for (UUID id : new UUID[] {rescheduled, cancelled}) {
+        for (UUID id : new UUID[] {rescheduled, cancelled, discarded}) {
             sql.sql("INSERT INTO " + SCHEMA + ".visits (id, lead_id, prospector_id, scheduled_date, status, cancelled_at) "
                             + "VALUES (:id, :lead, :prospector, current_date, 'CANCELLED', now())")
                     .param("id", id).param("lead", lead).param("prospector", prospector).update();
@@ -54,11 +56,15 @@ class CancelReasonMigrationTest extends IntegrationTestSupport {
         sql.sql("INSERT INTO " + SCHEMA + ".audit_logs (id, user_id, action, entity_type, entity_id) "
                         + "VALUES (:id, :user, 'VISIT_CANCELLED', 'VISIT', :visit)")
                 .param("id", UUID.randomUUID()).param("user", user).param("visit", cancelled).update();
+        sql.sql("INSERT INTO " + SCHEMA + ".audit_logs (id, user_id, action, entity_type, entity_id, metadata) "
+                        + "VALUES (:id, :user, 'VISIT_CANCELLED', 'VISIT', :visit, CAST('{\"reason\":\"LEAD_DISCARDED\"}' AS jsonb))")
+                .param("id", UUID.randomUUID()).param("user", user).param("visit", discarded).update();
 
         flywayUpTo("10").migrate();
 
         assertThat(reasonOf(sql, rescheduled)).isEqualTo("RESCHEDULED");
         assertThat(reasonOf(sql, cancelled)).isEqualTo("CANCELLED_BY_USER");
+        assertThat(reasonOf(sql, discarded)).isEqualTo("LEAD_DISCARDED");
         assertThat(reasonOf(sql, scheduled)).isNull();
         sql.sql("DROP SCHEMA " + SCHEMA + " CASCADE").update();
     }
