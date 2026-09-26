@@ -66,13 +66,14 @@ cd frontend && npm run lint            # oxlint
 cd frontend && npm run typecheck       # tsc -b
 cd frontend && npm test                # Vitest
 ./scripts/verify.sh                    # CI local completo; o GitHub Actions roda o mesmo script (D-035)
+./scripts/e2e.sh                       # E2E com Playwright: banco descartável, jar (dev) e vite preview (D-104)
 ```
 
 Health: `GET http://localhost:8080/actuator/health` → `{"status":"UP"}`.
 Swagger (só no perfil dev, D-056): `http://localhost:8080/swagger-ui/index.html`.
 ADMIN inicial no dev: `admin@resort.local` / `admin-dev-password`, com troca obrigatória no primeiro acesso (D-052).
 O jar exige perfil explícito: `SPRING_PROFILES_ACTIVE=prod java -jar backend/target/platform-*.jar`.
-Playwright entra na Fase 10.
+E2E (D-104): exige Docker e as portas 5433, 8080 e 4173 livres (pare o backend de desenvolvimento antes; o banco de desenvolvimento, na 5432, pode continuar). Na primeira vez, `cd frontend && npx playwright install chromium`. Argumentos extras vão para o Playwright, como `./scripts/e2e.sh --repeat-each=20 --workers=4`; `E2E_SKIP_BUILD=1` reaproveita o jar e o build. Não roda entre 23:55 e 00:20 no fuso da operação.
 
 ## Problemas comuns
 
