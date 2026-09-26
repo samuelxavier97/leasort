@@ -584,7 +584,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - E1, o fluxo da §23. Lead e acompanhantes têm CPF, e a ficha é conferida, na página e na resposta da API, sem o CPF com e sem pontuação e sem os 6 dígitos que a máscara mostraria.
   - E2, remarcação e reemissão invalidando o código anterior.
   - E3, primeiro acesso com troca obrigatória, e saída que invalida a sessão no servidor.
-  - E4, leitura do QR real pela câmera simulada do Chromium: o PNG da API vira um vídeo Y4M decodificado num canvas, sem dependência nova. O vídeo fica num diretório temporário, porque o Chromium não abre o arquivo num caminho com acentos (achado na implementação).
+  - E4, leitura do QR real pela câmera simulada do Chromium: o PNG da API vira um vídeo Y4M decodificado num canvas, sem dependência nova. O vídeo fica num diretório temporário, porque o Chromium não abre o arquivo num caminho com acentos (achado na implementação). O navegador da câmera é o Chromium completo (`channel: 'chromium'`): no `chromium-headless-shell`, padrão do Playwright para testes headless, a câmera simulada não leu o QR no CI; com o Chromium completo, passou.
 - **Estabilidade (medida em 2026-09-26):** 20 repetições da suíte com 4 workers passaram (80 de 80, 5,4 min). Em cada teste:
 
   | Teste | Tempo |
