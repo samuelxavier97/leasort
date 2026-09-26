@@ -301,6 +301,27 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 
 - **Decisão:** na Fase 11, as migrations rodam com um usuário do PostgreSQL dono do schema, e a aplicação conecta com outro usuário, sem ownership das tabelas e só com os privilégios de DML necessários. Assim a aplicação não consegue remover nem desabilitar o trigger de `audit_logs` (D-028). Não é opcional.
 - **Impacto:** configuração separada de credenciais para o Flyway e para o datasource na Fase 11.
+- **Complemento (Fase 11a, confirmado):**
+  - **Passo de migração separado:** as migrations não rodam dentro da aplicação. O serviço `migrate` do `docker-compose.prod.yml` usa a mesma imagem do backend (`java -cp app.jar com.resort.platform.MigrateMain`), roda como `resort_owner`, aplica as migrations e depois o `db/prod/grants.sql`, e termina. O backend só sobe depois dele terminar com sucesso, com `spring.flyway.enabled=false` no perfil `prod` e só a senha de `resort_app`. Assim, quem tomar o processo da aplicação não tem a senha do dono para desligar o trigger.
+  - **Papéis:** o `postgres/initdb/01-roles.sh` roda na criação do volume, como o superusuário da imagem, e cria três papéis com nomes fixos e senhas do `.env`:
+    - `resort_owner`: dono do banco e do schema `public`;
+    - `resort_app`: só DML;
+    - `resort_backup`: `pg_read_all_data`, para o `pg_dump`.
+
+    `PUBLIC` perde o acesso ao banco e ao schema.
+  - **Permissões de `resort_app`**, no `grants.sql`, idempotente e reaplicado a cada migração:
+    - `SELECT`, `INSERT`, `UPDATE` e `DELETE` nas tabelas;
+    - privilégios padrão, para que as tabelas de migrations futuras já nasçam com esse DML;
+    - `REVOKE UPDATE, DELETE, TRUNCATE` em `audit_logs`, além do trigger;
+    - nenhum acesso ao `flyway_schema_history`.
+  - **Testes:** `DatabaseRolesTest` e `ProductionStartupTest`, com o mesmo script de papéis e o mesmo `MigrateMain`. `resort_app` recebe "permission denied" (SQLSTATE 42501) em todas estas tentativas:
+    - desligar, trocar para réplica ou apagar o trigger;
+    - redefinir a função do trigger;
+    - `session_replication_role`;
+    - `UPDATE`, `DELETE` e `TRUNCATE` em `audit_logs`;
+    - criar, alterar ou apagar tabelas, índices, views e funções.
+
+    Os testes também provam que migrar de novo não muda nada, que `resort_backup` só lê e que a aplicação sobe e faz login como `resort_app`. Três mutações foram detectadas: `resort_app` como membro de `resort_owner`, sem o `REVOKE` e sem os privilégios padrão.
 
 ## D-058 — Dispatch de erro liberado no Spring Security
 
@@ -308,12 +329,23 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Decisão:** `dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()` no `SecurityConfig`. A regra vale só para o dispatch interno de erro; nenhuma rota nova fica acessível por requisição direta.
 - **Impacto:** o status original do erro é preservado. A resposta continua em Problem Details, sem detalhes internos (`GlobalExceptionHandler` devolve `INTERNAL_ERROR` genérico).
 
-## D-059 — Prontidão da aplicação no healthcheck de produção (pendente, Fase 11)
+## D-059 — Prontidão da aplicação no healthcheck de produção
 
-- **Status:** pendente; implementar na Fase 11.
+- **Status:** implementada na Fase 11a (PR 1), na direção abaixo.
 - **Contexto:** o `/actuator/health` responde `UP` assim que o servidor web sobe, antes de os `ApplicationRunner` terminarem, entre eles a criação do primeiro ADMIN (D-052). Na validação local de 2026-09-24, um login feito logo após o `UP` chegou 13 ms antes de o ADMIN existir e falhou. Os probes do Actuator foram desligados na Fase 1 porque, ligados, o `/actuator/health` passa a incluir `"groups":["liveness","readiness"]`, e a SPEC §11 define o endpoint público como "somente status".
 - **Decisão (direção):** religar o readiness probe do Actuator e usá-lo no healthcheck do Docker. O estado de readiness só passa a `ACCEPTING_TRAFFIC` depois dos `ApplicationRunner`, incluindo o bootstrap do ADMIN. O `/actuator/health` público continua devolvendo apenas `{"status":"UP"}`, sem `groups` nem componentes. Se ligar os probes expuser `groups` no endpoint público, o readiness fica acessível só internamente: pela porta de management ou restrito na configuração do Nginx.
 - **Impacto:** configuração do Actuator, healthcheck no `docker-compose.prod.yml` e testes que garantam readiness só depois do bootstrap e o endpoint público só com o status.
+- **Implementação (Fase 11a):**
+  - No perfil `prod`, os probes ficam ligados e o management vai para a porta interna `MANAGEMENT_PORT` (8081), que não é publicada.
+  - O healthcheck do Docker consulta `http://127.0.0.1:8081/actuator/health/readiness`. O Nginx encaminha o `/actuator/health` público para esse readiness, que devolve só `{"status":"UP"}`. Qualquer outro `/actuator/*` e o `/v3/*` dão 404 no Nginx, e a porta pública do backend não tem actuator.
+  - O Spring Boot só publica `ACCEPTING_TRAFFIC` no `ApplicationReadyEvent`, depois de todos os `ApplicationRunner`.
+  - **Testes:** o `ProductionStartupTest` sobe o perfil `prod` e confere que:
+    - durante os runners, o readiness responde 503;
+    - no momento de `ACCEPTING_TRAFFIC`, o ADMIN inicial já existe;
+    - o readiness responde exatamente `{"status":"UP"}`;
+    - a porta pública não tem actuator.
+
+    O `scripts/prod-check.sh` faz login logo depois de a pilha ficar saudável e confere o health público pelo Nginx.
 
 ## D-060 — CPF na API conforme o perfil
 
@@ -455,8 +487,17 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-087 — Imagem de compartilhamento do convite e nome do Resort
 
 - **Decisão:** a imagem é montada no frontend em canvas (§13), com 1080 × 1440 px: nome do Resort, "Convite de visita", nome do Lead, "Visita em DD/MM/AAAA", o QR vindo da API, o código `ABCDE-FGHJK` e a instrução "Apresente este código na portaria" (pedido na aprovação da Fase 5). Nada de CPF, telefone, e-mail, acompanhantes ou Prospector. O arquivo se chama `convite-ABCDE-FGHJK.png`. "Compartilhar" usa a Web Share API com arquivo quando `navigator.canShare({ files })` aceita; senão, baixa. "Baixar" sempre baixa. Cancelar o compartilhamento não é erro.
-- **Nome do Resort (revisto no início da Fase 6, a pedido):** constante única `RESORT_NAME` em `frontend/src/lib/resort.ts`, lida da variável de build do Vite `VITE_RESORT_NAME` (`import.meta.env.VITE_RESORT_NAME?.trim() || 'Resort'`). Sem a variável, ou com ela em branco, vale o genérico "Resort". O nome real é definido só no ambiente de build de produção, na Fase 11, e nunca entra num arquivo do repositório; `.env.*` (exceto `.env.example`) fica fora do Git.
-- **Descartado:** endpoint de configuração só para o nome (nenhum ganho para um texto fixo da operação); nome real numa constante ou num `.env` versionado (o repositório é público).
+- **Nome do Resort (revisto na Fase 11a, a pedido):** a mesma imagem precisa servir para qualquer cliente e para a demonstração, então o nome não entra no build.
+  - O `index.html` traz `<meta name="resort-name" content="" />`.
+  - O `nginx/40-resort-name.sh` roda a cada subida do container. Ele gera o `index.html` servido a partir de um modelo, com `RESORT_NAME` escapada para HTML (`&`, `<`, `>`, `"` e `'` viram entidades; quebras de linha são removidas).
+  - O frontend lê a meta tag em `frontend/src/lib/resort.ts`, com "Resort" como padrão quando a meta está vazia ou ausente.
+  - A meta tag substitui um script inline porque a CSP proíbe script inline.
+  - `VITE_RESORT_NAME` deixou de existir.
+  - O nome real fica só no `.env.prod` da VPS, nunca num arquivo do repositório.
+  - **Testes:**
+    - `resort.test.ts`: sem meta, meta vazia, espaços e um valor escapado com aspas e `<script>`, que volta como texto sem criar elemento;
+    - `prod-check.sh`: um nome com aspas, `<b>` e `&` chega intacto ao `index.html` servido, sem criar elemento; sem a variável, a meta fica vazia. A mutação sem o escape das aspas foi detectada.
+- **Descartado:** endpoint de configuração só para o nome (nenhum ganho para um texto fixo da operação); nome real numa constante ou num `.env` versionado (o repositório é público); `VITE_RESORT_NAME` no build (a imagem ficaria presa a um cliente); script inline com o nome (a CSP proíbe).
 - **Navegação (confirmado na aprovação):** depois de agendar, remarcar ou reemitir, a tela abre o convite novo, porque o código novo precisa ser compartilhado.
 
 ## D-088 — Respostas da validação e do registro na Portaria
@@ -604,7 +645,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   | Credenciais | valores padrão fictícios, trocados pelo script | variáveis obrigatórias, sem padrão (D-052) |
   | IP do cliente | o do `vite preview` (127.0.0.1) | via `forward-headers-strategy: native` atrás do Nginx |
   | Servidor da frente | `vite preview` | Nginx |
-  | Nome do Resort | sem `VITE_RESORT_NAME` (nome padrão) | `VITE_RESORT_NAME` |
+  | Nome do Resort | sem meta preenchida (nome padrão "Resort") | `RESORT_NAME` injetada pelo Nginx (D-087) |
   | Dados de exemplo | nenhum | nenhum |
   | Job noturno e fuso | ligado, `APP_TIMEZONE` padrão | iguais |
 - **O que o E2E não cobre:**
@@ -615,3 +656,44 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - câmeras e aparelhos reais: o Pixel 7 é só o viewport;
   - a Web Share API;
   - a impressão A4 da ficha (verificação manual, D-097).
+
+## D-105 — Imagens e pilha de produção
+
+- **Imagens:** bases fixadas por digest. Argumentos de build (`JDK_IMAGE`, `JRE_IMAGE`, `NODE_IMAGE`, `NGINX_IMAGE`) permitem trocar o registro, por exemplo por um espelho, sem editar os arquivos.
+  - **Backend** (`backend/Dockerfile`): build com `eclipse-temurin:21-jdk-alpine` e runtime com `eclipse-temurin:21-jre-alpine`. O jar é extraído nas camadas do Spring Boot como `app.jar`, e o processo roda como o usuário `app` (uid 10001), com `TZ=UTC` e perfil `prod`.
+  - **Nginx de borda** (`nginx/Dockerfile`, contexto na raiz): build do frontend com `node:22-alpine` e serviço com `nginxinc/nginx-unprivileged` (uid 101), com o nome do Resort injetado na subida (D-087).
+- **`docker-compose.prod.yml`:**
+  - Serviços: `postgres`, `migrate` (D-057), `backend` e `nginx`, todos numa rede interna com sub-rede fixa. Só o Nginx publica porta.
+  - Ordem de subida: o backend espera o postgres saudável e o `migrate` concluído; o Nginx espera o backend saudável, pelo readiness (D-059).
+  - Todos os serviços têm `json-file` com `max-size` de 10 MB e `max-file` 5. Os de longa duração têm `restart: unless-stopped`, healthcheck e limite de memória.
+  - As variáveis obrigatórias param a subida se faltarem. O modelo é o `.env.prod.example`, sem nenhum valor real, separado do `.env.example` de desenvolvimento (confirmado).
+- **Memória** (meta de 2 GB, confirmado):
+
+  | Serviço | Limite | Ajustes |
+  |---|---|---|
+  | backend | 768 MB | `-XX:MaxRAMPercentage=60` (heap máximo medido: 462 MB), `-XX:+UseSerialGC`, `-Xss512k`, `-XX:+ExitOnOutOfMemoryError` |
+  | postgres | 512 MB | `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=4MB`, `maintenance_work_mem=64MB`, `max_connections=30` |
+  | nginx | 64 MB | — |
+  | migrate | 384 MB | — |
+
+  Perfil de 1 GB, documentado no `.env.prod.example`: backend com 448 MB, postgres com 256 MB e `shared_buffers=64MB`, mais 1 GB de swap. Uso medido na verificação, logo depois do login e da criação de um Lead: backend com cerca de 310 MB, postgres com 48 MB e nginx com 5 MB.
+- **Verificação** (`scripts/prod-check.sh`, job `prod-stack` do CI em paralelo aos demais; vira check obrigatório depois de três execuções verdes):
+  - constrói as imagens e sobe a pilha com um `.env` descartável e senhas aleatórias, na porta 18080;
+  - confere a configuração do compose, a subida e o `migrate`, o login logo depois do readiness, os cookies `Secure`, a troca de senha e a criação de Lead como `resort_app`, o health público, os 404 do actuator, os usuários sem root, o nome do Resort e a memória;
+  - derruba tudo e apaga os volumes em qualquer saída.
+
+  Mutações detectadas: o backend publicando uma porta e o nome sem o escape das aspas. O HTTPS, os cabeçalhos, o IP real, o backup e o runbook entram nos PRs 2 e 3.
+
+## D-106 — "Hoje" da operação na validação de datas e na importação
+
+- **Contexto:** na releitura da Fase 11, dois pontos comparavam com o dia do fuso da JVM, e não com o de `APP_TIMEZONE`:
+  - a importação de Leads (`LocalDate.now()`);
+  - o `@PastOrPresent` do nascimento de Lead e acompanhante, cujo relógio padrão é o do sistema.
+
+  Num container em UTC, entre 21h e meia-noite em São Paulo, a data de amanhã passava como válida.
+- **Decisão:**
+  - O Bean Validation recebe um `ClockProvider` com o `Clock` da aplicação no fuso da operação (`ValidationConfigurationCustomizer` no `CommonConfig`).
+  - A importação usa o `BusinessCalendar.today()`.
+  - Os containers rodam com `TZ=UTC`, e o comportamento não depende disso.
+- **Testes:** o `OperationDayValidationTest` roda com o fuso padrão da JVM em `Pacific/Kiritimati` e o relógio às 22:30 de 19/09 em São Paulo (20/09 em UTC). Em Lead, acompanhante e importação, 19/09 é aceito e 20/09 é recusado. As mutações (o validador sem o relógio da operação e a importação com `LocalDate.now()`) derrubam os três casos.
+

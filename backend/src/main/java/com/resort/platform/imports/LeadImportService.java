@@ -3,6 +3,7 @@ package com.resort.platform.imports;
 import com.resort.platform.audit.AuditAction;
 import com.resort.platform.audit.AuditService;
 import com.resort.platform.common.ApiException;
+import com.resort.platform.common.BusinessCalendar;
 import com.resort.platform.common.Cpf;
 import com.resort.platform.common.CsvReader;
 import com.resort.platform.common.CsvReader.Row;
@@ -51,11 +52,14 @@ public class LeadImportService {
     private final LeadRepository leads;
     private final ProspectorRepository prospectors;
     private final AuditService audit;
+    private final BusinessCalendar calendar;
 
-    public LeadImportService(LeadRepository leads, ProspectorRepository prospectors, AuditService audit) {
+    public LeadImportService(
+            LeadRepository leads, ProspectorRepository prospectors, AuditService audit, BusinessCalendar calendar) {
         this.leads = leads;
         this.prospectors = prospectors;
         this.audit = audit;
+        this.calendar = calendar;
     }
 
     public record ImportResult(int imported, int totalRows) {}
@@ -76,7 +80,7 @@ public class LeadImportService {
                     "O arquivo tem " + data.size() + " linhas; o limite é " + MAX_ROWS + " por arquivo.");
         }
 
-        Validation validation = new Validation(columns, prospectorsByCode(data, columns), existingCpfs(data, columns));
+        Validation validation = new Validation(columns, prospectorsByCode(data, columns), existingCpfs(data, columns), calendar.today());
         List<Lead> parsed = new ArrayList<>();
         for (Row row : data) {
             Lead lead = validation.validate(row);
@@ -163,11 +167,14 @@ public class LeadImportService {
         private final Set<String> existingCpfs;
         private final Map<String, Integer> cpfFirstLine = new HashMap<>();
         private final List<ImportError> errors = new ArrayList<>();
+        private final LocalDate today;
 
-        Validation(Map<String, Integer> columns, Map<String, Prospector> prospectorsByCode, Set<String> existingCpfs) {
+        Validation(Map<String, Integer> columns, Map<String, Prospector> prospectorsByCode, Set<String> existingCpfs,
+                LocalDate today) {
             this.columns = columns;
             this.prospectorsByCode = prospectorsByCode;
             this.existingCpfs = existingCpfs;
+            this.today = today;
         }
 
         /** Devolve o Lead pronto para gravar, ou {@code null} se a linha tem erro. */
@@ -216,7 +223,7 @@ public class LeadImportService {
             if (!rawDate.isEmpty()) {
                 try {
                     birthDate = LocalDate.parse(rawDate, DATE);
-                    if (birthDate.isAfter(LocalDate.now()) || birthDate.isBefore(MIN_BIRTH_DATE)) {
+                    if (birthDate.isAfter(today) || birthDate.isBefore(MIN_BIRTH_DATE)) {
                         error(line, "data_nascimento", "DATE_INVALID", "Data de nascimento fora do intervalo aceito.");
                     }
                 } catch (DateTimeParseException e) {
