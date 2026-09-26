@@ -44,7 +44,7 @@ async function qrVideo(page: Page, png: Buffer): Promise<Buffer> {
 }
 
 /** E4: a Portaria lê o QR real do convite pela câmera (simulada) do Chromium, sem digitar nada. */
-test('E4: a câmera lê o QR do convite e a Portaria vê o acesso liberado', async ({ world, page }) => {
+test('E4: a câmera lê o QR do convite e a Portaria vê o acesso liberado', async ({ world, page }, testInfo) => {
   const prospector = await world.createUser('PROSPECTOR')
   const gate = await world.createUser('GATE')
   const leadName = `Lead E2E ${world.suffix}`
@@ -72,11 +72,13 @@ test('E4: a câmera lê o QR do convite e a Portaria vê o acesso liberado', asy
   const video = join(videoDir, 'qr.y4m')
   await writeFile(video, await qrVideo(page, png))
 
-  // Um Chromium só da Portaria, com o vídeo como câmera e a permissão concedida.
+  // Um Chromium só da Portaria, com o vídeo como câmera e a permissão concedida. É o Chromium
+  // completo (channel 'chromium'): o headless shell, padrão do Playwright, falhou no CI.
   const cameraBrowser = await chromium.launch({
     args: ['--use-fake-device-for-media-stream', `--use-file-for-fake-video-capture=${video}`],
-    ...(process.env.E2E_CHROMIUM_PATH ? { executablePath: process.env.E2E_CHROMIUM_PATH } : {}),
+    ...(process.env.E2E_CHROMIUM_PATH ? { executablePath: process.env.E2E_CHROMIUM_PATH } : { channel: 'chromium' }),
   })
+  let gatePage: Page | undefined
   try {
     const context = await cameraBrowser.newContext({
       ...devices['Pixel 7'],
@@ -85,7 +87,7 @@ test('E4: a câmera lê o QR do convite e a Portaria vê o acesso liberado', asy
       timezoneId: OPERATION_TIMEZONE,
       permissions: ['camera'],
     })
-    const gatePage = await context.newPage()
+    gatePage = await context.newPage()
     await login(gatePage, gate.email, gate.password)
     await expect(gatePage).toHaveURL('/portaria')
     await gatePage.getByRole('button', { name: 'ESCANEAR QR CODE' }).click()
@@ -94,6 +96,14 @@ test('E4: a câmera lê o QR do convite e a Portaria vê o acesso liberado', asy
     await expect(gatePage.getByText('Visita sem acompanhantes.')).toBeVisible()
     // A câmera foi parada depois da leitura (§16.5).
     await expect(gatePage.getByLabel('Imagem da câmera')).toHaveCount(0)
+  } catch (error) {
+    // A captura automática é da página padrão; a da Portaria mostra o aviso de câmera, se houver.
+    if (gatePage) {
+      await testInfo.attach('portaria', { body: await gatePage.screenshot(), contentType: 'image/png' })
+      const warning = gatePage.getByRole('status').filter({ hasText: /câmera/i })
+      if (await warning.count()) console.log(`E4: aviso de câmera: ${await warning.innerText()}`)
+    }
+    throw error
   } finally {
     await cameraBrowser.close()
     await rm(videoDir, { recursive: true, force: true })
