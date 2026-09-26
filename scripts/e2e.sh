@@ -37,12 +37,30 @@ JAR="$(ls "$ROOT"/backend/target/platform-*.jar | grep -v plain | head -n 1)"
 
 BACKEND_PID=""
 PREVIEW_PID=""
+
+# stop_process <pid>: SIGTERM e espera o processo sair; depois de 30 s, SIGKILL. Sem esperar, o
+# script terminaria com o backend ainda vivo (um Ctrl+C durante a subida o deixava para trás).
+stop_process() {
+  local pid="$1"
+  [ -n "$pid" ] || return 0
+  kill "$pid" 2>/dev/null || return 0
+  for _ in $(seq 30); do
+    kill -0 "$pid" 2>/dev/null || return 0
+    sleep 1
+  done
+  kill -9 "$pid" 2>/dev/null || true
+}
+
+# Roda no fim em qualquer caso: sucesso, falha (set -e) e interrupção (Ctrl+C ou SIGTERM do CI).
 cleanup() {
-  [ -n "$PREVIEW_PID" ] && kill "$PREVIEW_PID" 2>/dev/null || true
-  [ -n "$BACKEND_PID" ] && kill "$BACKEND_PID" 2>/dev/null || true
+  trap - INT TERM
+  stop_process "$PREVIEW_PID"
+  stop_process "$BACKEND_PID"
   docker rm -f "$DB_CONTAINER" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "$LOG_DIR"
 
 # wait_for <descrição> <segundos> <comando...>: repete o comando até ele passar.

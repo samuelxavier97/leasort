@@ -565,7 +565,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Decisão:** `scripts/e2e.sh`, fora do `verify.sh`, e um job `e2e` no `ci.yml`, em paralelo ao `verify`, nos mesmos gatilhos (confirmado). O script:
   - recusa começar com as portas 5433, 8080 ou 4173 ocupadas, ou com `waitForTimeout` em `frontend/e2e`;
   - gera o jar sem testes e o build do frontend (`E2E_SKIP_BUILD=1` reaproveita os dois);
-  - sobe um PostgreSQL 16 descartável, com os dados em memória (`--tmpfs`), apagado no fim com ou sem falha;
+  - sobe um PostgreSQL 16 descartável, com os dados em memória (`--tmpfs`), apagado no fim em qualquer caso: sucesso, falha de teste ou interrupção (Ctrl+C, SIGTERM do CI). A limpeza para o `vite preview` e o backend e espera cada um sair (SIGKILL depois de 30 s), antes de remover o container;
   - sobe o jar com perfil `dev`, apontado para esse banco, e o build de produção no `vite preview`, que repassa `/api` para a 8080 (sem mudar o `vite.config`, confirmado);
   - gera a senha inicial e a senha final do ADMIN a cada execução.
 - **Onde fica o código:** `frontend/e2e` e `frontend/playwright.config.ts`, com `@playwright/test` fixado em `1.63.0`. O Vitest só lê `src/**/*.test.{ts,tsx}`, e o `tsconfig.e2e.json` põe o E2E no typecheck e no lint. `E2E_CHROMIUM_PATH` permite usar um Chromium já instalado; o CI usa o do `playwright install`.
