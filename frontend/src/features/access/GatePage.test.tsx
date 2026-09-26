@@ -163,6 +163,32 @@ describe('Portaria — liberado (P3)', () => {
     await waitFor(() => expect(calls.register).toEqual([{ invitationId: 'i-1', presentCompanionIds: [] }]))
   })
 
+  it('clique duplo em Confirmar manda um único pedido de registro', async () => {
+    const user = userEvent.setup()
+    renderGate({ body: fakeAuthorized() }, { body: { result: 'AUTHORIZED', invitationId: 'i-1', leadName: 'Lead Fictício' } })
+    // O registro fica pendente até o teste liberar, como numa rede lenta.
+    const answer = globalThis.fetch
+    let release = () => {}
+    const held = new Promise<void>((resolve) => (release = resolve))
+    let registerRequests = 0
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/access/register') {
+        registerRequests += 1
+        await held
+      }
+      return answer(input, init)
+    })
+
+    await validateTyped(user)
+    await user.dblClick(await screen.findByRole('button', { name: 'CONFIRMAR ENTRADA' }))
+    await user.click(screen.getByRole('button', { name: 'CONFIRMAR ENTRADA' }))
+    expect(registerRequests).toBe(1)
+
+    release()
+    expect(await screen.findByLabelText('Imagem da câmera')).toBeInTheDocument()
+    expect(registerRequests).toBe(1)
+  })
+
   it('erro no registro fica na tela de liberado, com a mensagem', async () => {
     const user = userEvent.setup()
     renderGate({ body: fakeAuthorized() }, problem(400, 'COMPANION_NOT_FOUND'))
