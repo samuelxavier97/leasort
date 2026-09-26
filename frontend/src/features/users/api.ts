@@ -31,8 +31,8 @@ export interface UpdateUserInput {
 
 export const usersQueryKey = ['users'] as const
 
-export function listUsers(page: number): Promise<Page<User>> {
-  return api<Page<User>>(`/api/users?page=${page}`)
+export function listUsers(page: number, size = 20): Promise<Page<User>> {
+  return api<Page<User>>(`/api/users?page=${page}&size=${size}`)
 }
 
 export function createUser(input: CreateUserInput): Promise<{ user: User; temporaryPassword: string }> {

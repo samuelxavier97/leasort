@@ -11,6 +11,8 @@ export interface MockResponse {
   body?: unknown
   /** Corpo binário (ex.: PNG), enviado sem JSON. */
   raw?: { bytes: Uint8Array<ArrayBuffer>; type: string }
+  /** Cabeçalhos extras da resposta (ex.: Content-Disposition de um download). */
+  headers?: Record<string, string>
 }
 
 export type Handler = (method: string, url: string, body: unknown) => MockResponse | undefined
@@ -24,7 +26,7 @@ export function mockFetch(handler: Handler) {
     const result = handler(method, url, body) ?? { status: 404, body: { code: 'NOT_MOCKED', detail: `${method} ${url}` } }
     const status = result.status ?? 200
     if (result.raw) {
-      return new Response(result.raw.bytes, { status, headers: { 'Content-Type': result.raw.type } })
+      return new Response(result.raw.bytes, { status, headers: { 'Content-Type': result.raw.type, ...result.headers } })
     }
     return new Response(status === 204 || result.body === undefined ? null : JSON.stringify(result.body), {
       status,

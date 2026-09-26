@@ -77,7 +77,7 @@ async function send<T>(path: string, method: Method, headers: Record<string, str
   return (await response.json()) as T
 }
 
-async function toApiError(response: Response): Promise<ApiError> {
+export async function toApiError(response: Response): Promise<ApiError> {
   try {
     const problem = await response.json()
     const errors: unknown[] = Array.isArray(problem.errors) ? problem.errors : []

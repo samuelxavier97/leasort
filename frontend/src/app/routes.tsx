@@ -8,6 +8,8 @@ import { RecentAccessPage } from '@/features/access/RecentAccessPage'
 import { DashboardPage } from '@/features/dashboard/DashboardPage'
 import { ArrivalsPage } from '@/features/arrivals/ArrivalsPage'
 import { VisitSheetPage } from '@/features/arrivals/VisitSheetPage'
+import { AuditPage } from '@/features/audit/AuditPage'
+import { ExportsPage } from '@/features/exports/ExportsPage'
 import { ImportLeadsPage } from '@/features/leads/ImportLeadsPage'
 import { LeadDetailPage } from '@/features/leads/LeadDetailPage'
 import { LeadsPage } from '@/features/leads/LeadsPage'
@@ -60,6 +62,8 @@ export const routes: RouteObject[] = [
             element: <RequireRole roles={['ADMIN']} />,
             children: [
               { path: '/usuarios', element: <UsersPage /> },
+              { path: '/exportacoes', element: <ExportsPage /> },
+              { path: '/auditoria', element: <AuditPage /> },
               { path: '/leads/importar', element: <ImportLeadsPage /> },
               { path: '/prospectores', element: <ProspectorsPage /> },
               { path: '/visitas', element: <VisitsPage key="all" view="all" /> },
