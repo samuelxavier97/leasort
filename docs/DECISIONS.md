@@ -559,3 +559,59 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Decisão:** menu do ADMIN na ordem da §16.1, com "Exportações" antes de "Usuários" e "Auditoria" por último; as duas rotas são só do ADMIN.
 - **Exportações (`/exportacoes`):** um bloco por arquivo, com descrição, a data que o período usa, período (as duas datas ou nenhuma), status do próprio arquivo (do Lead, da visita ou o resultado do acesso) e Prospector. Só os filtros preenchidos vão na URL. O download usa `fetch` com a sessão, salva com o nome do `Content-Disposition` e revoga a URL do Blob logo depois, porque o arquivo traz CPF completo. Período com uma data só ou invertido bloqueia o botão; erros da API aparecem em português no bloco.
 - **Auditoria (`/auditoria`):** filtros de período (iniciando nos 30 dias até hoje, D-080), usuário, ação e entidade, com rótulos em português; trocar um filtro volta à primeira página, e a paginação mantém os filtros. Tabela com data e hora no fuso da operação, usuário ("Sistema" vem da API), ação, entidade com o início do id, detalhes e IP. O metadata aparece como pares "Chave: valor" em português, com status, causas e tipos traduzidos, datas em DD/MM/AAAA, sem os valores nulos, e objetos aninhados como "Filtros · Chave". A ordem de leitura segue uma lista fixa de chaves, porque o `jsonb` do PostgreSQL reordena as chaves (achado na verificação manual); chaves desconhecidas vêm depois, como vieram. Metadata vazio é "—".
+
+## D-104 — E2E com Playwright
+
+- **Decisão:** `scripts/e2e.sh`, fora do `verify.sh`, e um job `e2e` no `ci.yml`, em paralelo ao `verify`, nos mesmos gatilhos (confirmado). O script:
+  - recusa começar com as portas 5433, 8080 ou 4173 ocupadas, ou com `waitForTimeout` em `frontend/e2e`;
+  - gera o jar sem testes e o build do frontend (`E2E_SKIP_BUILD=1` reaproveita os dois);
+  - sobe um PostgreSQL 16 descartável, com os dados em memória (`--tmpfs`), apagado no fim com ou sem falha;
+  - sobe o jar com perfil `dev`, apontado para esse banco, e o build de produção no `vite preview`, que repassa `/api` para a 8080 (sem mudar o `vite.config`, confirmado);
+  - gera a senha inicial e a senha final do ADMIN a cada execução.
+- **Onde fica o código:** `frontend/e2e` e `frontend/playwright.config.ts`, com `@playwright/test` fixado em `1.63.0`. O Vitest só lê `src/**/*.test.{ts,tsx}`, e o `tsconfig.e2e.json` põe o E2E no typecheck e no lint. `E2E_CHROMIUM_PATH` permite usar um Chromium já instalado; o CI usa o do `playwright install`.
+- **Banco limpo e dados:** o perfil `dev` não carrega dados de exemplo; só o `BootstrapAdminInitializer` roda na subida, e ele cria o ADMIN inicial. A preparação global confere isso antes dos testes: 1 usuário e nenhum Lead, visita ou convite. Depois ela:
+  - faz o login do ADMIN, esperando o login funcionar em vez do health, por causa da D-059, com no máximo 4 tentativas para não chegar ao limite de login;
+  - troca a senha inicial;
+  - recusa rodar entre 23:55 e 00:20 no fuso da operação, porque os fluxos agendam para hoje e o job noturno roda às 00:15 (confirmado).
+
+  Cada teste cria os próprios usuários e Leads pela API: nomes "… E2E <sufixo>", CPFs válidos gerados por algoritmo e e-mails `@e2e.local`. A troca da senha provisória também é pela API. Nenhum teste depende de outro, e o limite de 30 validações por minuto por porteiro não interfere na repetição.
+- **Contextos e esperas:**
+  - um contexto de navegador por perfil, com login pela tela, fuso `America/Sao_Paulo` e `pt-BR`;
+  - a Portaria usa o viewport do Pixel 7 e fica sem permissão de câmera, então a validação é pela digitação;
+  - só esperas por condição, sem novas tentativas (`retries: 0`);
+  - a chegada para o anfitrião é esperada por até 35 s: o intervalo de 30 s mais a folga da requisição.
+- **Testes:**
+  - E1, o fluxo da §23. Lead e acompanhantes têm CPF, e a ficha é conferida, na página e na resposta da API, sem o CPF com e sem pontuação e sem os 6 dígitos que a máscara mostraria.
+  - E2, remarcação e reemissão invalidando o código anterior.
+  - E3, primeiro acesso com troca obrigatória, e saída que invalida a sessão no servidor.
+  - E4, leitura do QR real pela câmera simulada do Chromium: o PNG da API vira um vídeo Y4M decodificado num canvas, sem dependência nova. O vídeo fica num diretório temporário, porque o Chromium não abre o arquivo num caminho com acentos (achado na implementação).
+- **Estabilidade (medida em 2026-09-26):** 20 repetições da suíte com 4 workers passaram (80 de 80, 5,4 min). Em cada teste:
+
+  | Teste | Tempo |
+  |---|---|
+  | E1 | 36 a 43 s (quase tudo é a espera pela consulta de 30 s) |
+  | E2 | 7 a 14 s |
+  | E3 | 5 a 9 s |
+  | E4 | 5 a 12 s |
+
+  Uma execução do script com jar e build prontos leva cerca de 1 min. O E4 ficaria de fora se não passasse nas 20 repetições (condição da aprovação).
+- **`dev` do E2E × `prod`:**
+
+  | Ponto | E2E (`dev`) | `prod` |
+  |---|---|---|
+  | Cookies de sessão e `XSRF-TOKEN` | sem `Secure`, por HTTP | `Secure`, só com HTTPS (D-054) |
+  | Swagger e `/v3/api-docs` | ligados (D-056) | inexistentes |
+  | Credenciais | valores padrão fictícios, trocados pelo script | variáveis obrigatórias, sem padrão (D-052) |
+  | IP do cliente | o do `vite preview` (127.0.0.1) | via `forward-headers-strategy: native` atrás do Nginx |
+  | Servidor da frente | `vite preview` | Nginx |
+  | Nome do Resort | sem `VITE_RESORT_NAME` (nome padrão) | `VITE_RESORT_NAME` |
+  | Dados de exemplo | nenhum | nenhum |
+  | Job noturno e fuso | ligado, `APP_TIMEZONE` padrão | iguais |
+- **O que o E2E não cobre:**
+  - HTTPS e Nginx, com seus cabeçalhos (HSTS, CSP, `Permissions-Policy`, `X-Content-Type-Options`);
+  - cookies `Secure`;
+  - o IP real atrás do proxy, a prontidão da D-059 e o usuário do banco sem ownership (D-057), todos da Fase 11;
+  - navegadores além do Chromium, como o Safari do iPhone;
+  - câmeras e aparelhos reais: o Pixel 7 é só o viewport;
+  - a Web Share API;
+  - a impressão A4 da ficha (verificação manual, D-097).
