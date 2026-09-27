@@ -1,4 +1,14 @@
 import { randomInt } from 'node:crypto'
+import { appendFileSync } from 'node:fs'
+
+/**
+ * Registra um valor sensível usado no teste (CPF, código de convite) em E2E_SENSITIVE_FILE, quando
+ * definida: a verificação da pilha de produção procura cada um nos logs, onde nenhum pode aparecer
+ * (D-111). Sem a variável, não faz nada.
+ */
+export function recordSensitive(value: string): void {
+  if (process.env.E2E_SENSITIVE_FILE) appendFileSync(process.env.E2E_SENSITIVE_FILE, `${value}\n`)
+}
 
 /** Fuso da operação (APP_TIMEZONE padrão); o E2E roda o backend com ele. */
 export const OPERATION_TIMEZONE = 'America/Sao_Paulo'
@@ -22,7 +32,9 @@ export function fakeCpf(): string {
   }
   const first = check(base)
   const second = check([...base, first])
-  return [...base, first, second].join('')
+  const cpf = [...base, first, second].join('')
+  recordSensitive(cpf)
+  return cpf
 }
 
 export function formatCpf(digits: string): string {

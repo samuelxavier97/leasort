@@ -131,6 +131,33 @@ services:
         ipv4_address: ${NGINX_INTERNAL_IP:-172.30.0.10}
     logging: *logging
 
+  # Backup diário cifrado (D-110): pg_dump como resort_backup, age para BACKUP_AGE_RECIPIENT (a chave
+  # privada nunca fica no servidor), retenção de 14 dias no volume backups. A cópia fora da VPS é
+  # obrigatória (docs/DEPLOY.md).
+  backup:
+    image: ${BACKUP_IMAGE:?defina BACKUP_IMAGE}
+    environment:
+      PGHOST: postgres
+      PGPASSWORD: ${DB_BACKUP_PASSWORD:?defina DB_BACKUP_PASSWORD}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?defina BACKUP_AGE_RECIPIENT}
+      BACKUP_TIME: ${BACKUP_TIME:-03:00}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+      TZ: ${APP_TIMEZONE:-America/Sao_Paulo}
+    volumes:
+      - backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "pgrep", "crond"]
+      interval: 1m
+      timeout: 5s
+      retries: 3
+    mem_limit: 128m
+    restart: unless-stopped
+    networks: [internal]
+    logging: *logging
+
   # Renovação dos certificados do Let's Encrypt a cada 12 h (D-109). Só com COMPOSE_PROFILES=letsencrypt;
   # a primeira emissão é feita com scripts/issue-cert.sh.
   certbot:
@@ -156,5 +183,6 @@ networks:
 
 volumes:
   pgdata:
+  backups:
   letsencrypt:
   acme-webroot:

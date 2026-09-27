@@ -38,7 +38,7 @@ backend/src/main/java/com/resort/platform/
   dashboard exports imports audit common
 frontend/src/
   app/ (rotas, layout por perfil)  features/<módulo>/  components/  lib/
-docs/  nginx/  postgres/initdb/  docker-compose.yml  docker-compose.prod.yml  .env.example  .env.prod.example
+docs/ (SPEC, DECISIONS, DEPLOY)  nginx/  postgres/  backup/  scripts/  docker-compose.yml  docker-compose.prod.yml  .env.example  .env.prod.example
 ```
 
 ## Convenções
@@ -68,13 +68,14 @@ cd frontend && npm test                # Vitest
 ./scripts/verify.sh                    # CI local completo; o GitHub Actions roda o mesmo script (D-035)
 ./scripts/e2e.sh                       # E2E com Playwright: banco descartável, jar (dev) e vite preview (D-104)
 ./scripts/prod-check.sh                # pilha de produção local por HTTPS, verificada por fora, com o E2E (D-105)
+./scripts/restore.sh <.env> <backup> <chave>  # restauração de backup (D-110; ver docs/DEPLOY.md)
 ```
 
 Health: `GET http://localhost:8080/actuator/health` → `{"status":"UP"}`.
 Swagger (só no perfil dev, D-056): `http://localhost:8080/swagger-ui/index.html`.
 ADMIN inicial no dev: `admin@resort.local` / `admin-dev-password`, com troca obrigatória no primeiro acesso (D-052).
 O jar exige perfil explícito: `SPRING_PROFILES_ACTIVE=prod java -jar backend/target/platform-*.jar`.
-Produção (D-105): `docker-compose.prod.yml` com as variáveis do `.env.prod.example`. As migrations rodam no serviço `migrate` como `resort_owner`; a aplicação conecta como `resort_app`, só com DML (D-057). O readiness fica na porta interna 8081 (D-059). O nome do Resort vem de `RESORT_NAME`, injetada pelo Nginx na subida (D-087). Nginx com HTTPS, cabeçalhos e CSP (D-107), IP real (D-108) e Let's Encrypt (D-109). O `prod-check.sh` exige Docker, curl, openssl, python3, as portas 18080 e 18443 livres e, para o E2E, o Chromium do Playwright (`PROD_CHECK_E2E=0` pula o E2E). Não abra a pilha local num navegador de uso pessoal: o HSTS de `https://localhost` ficaria gravado nele.
+Produção (D-105): `docker-compose.prod.yml` com as variáveis do `.env.prod.example`. As migrations rodam no serviço `migrate` como `resort_owner`; a aplicação conecta como `resort_app`, só com DML (D-057). O readiness fica na porta interna 8081 (D-059). O nome do Resort vem de `RESORT_NAME`, injetada pelo Nginx na subida (D-087). Nginx com HTTPS, cabeçalhos e CSP (D-107), IP real (D-108), Let's Encrypt (D-109), backup cifrado (D-110), logs sem dado pessoal (D-111) e imagens publicadas no GHCR na tag `vX.Y.Z` (D-112). O runbook da VPS está em `docs/DEPLOY.md`. O `prod-check.sh` exige Docker, curl, openssl, python3, as portas 18080 e 18443 livres e, para o E2E, o Chromium do Playwright (`PROD_CHECK_E2E=0` pula o E2E). Não abra a pilha local num navegador de uso pessoal: o HSTS de `https://localhost` ficaria gravado nele.
 E2E (D-104): exige Docker e as portas 5433, 8080 e 4173 livres (pare o backend de desenvolvimento antes; o banco de desenvolvimento, na 5432, pode continuar). Na primeira vez, `cd frontend && npx playwright install chromium`. Argumentos extras vão para o Playwright, como `./scripts/e2e.sh --repeat-each=20 --workers=4`; `E2E_SKIP_BUILD=1` reaproveita o jar e o build. Não roda entre 23:55 e 00:20 no fuso da operação.
 
 ## Problemas comuns

@@ -672,6 +672,11 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - câmeras e aparelhos reais: o Pixel 7 é só o viewport;
   - a Web Share API;
   - a impressão A4 da ficha (verificação manual, D-097).
+- **Acréscimos (Fase 11a):**
+  - **E5** percorre as telas de cada perfil.
+  - **E6** baixa e compartilha a imagem do convite (D-087): "Baixar", "Compartilhar" sem Web Share API (baixa) e "Compartilhar" com a Web Share API simulada. Nos três casos, confere que o arquivo é um PNG de 1080 × 1440 cujo QR decodifica `RSV:<código>`, com o `@zxing/library` (já no projeto pelo `@zxing/browser`, agora declarado como devDependency na mesma versão).
+  - Todos os contextos reprovam qualquer violação de CSP.
+  - `E2E_BASE_URL` roda a suíte contra a pilha de produção por HTTPS (D-105), e `E2E_SENSITIVE_FILE` registra os CPFs e códigos usados (D-111).
 
 ## D-105 — Imagens e pilha de produção
 
@@ -746,7 +751,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Limites:**
   - `client_max_body_size 6m` em `/api/`: a importação de 4,9 MB passa, e 7 MB recebe 413 do próprio Nginx;
   - `/api/exports/` com `proxy_buffering off` e `proxy_read_timeout`/`proxy_send_timeout` de 1900 s, acima dos 30 min da D-101. A verificação lê o `nginx -T`; o envio aos poucos de uma exportação grande não é medido.
-- **Log de acesso:** formato próprio, `$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time`, sem query string, Referer nem User-Agent, porque `/api/leads?cpf=…` e a busca podem levar CPF. O log de erro do Nginx inclui a linha do pedido quando há falha de upstream; o risco residual e a verificação dos logs ficam para o PR 3.
+- **Log de acesso:** formato próprio, `$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time`, sem query string, Referer nem User-Agent, porque `/api/leads?cpf=…` e a busca podem levar CPF. O log de erro do Nginx incluiria a linha do pedido, com a query, numa falha de upstream; em `/api/` ele fica só no nível `crit` (D-111).
 - **Imagem e verificação:** o `nginx-unprivileged` continua sem root. `server_tokens off`. O `prod-check.sh` confere tudo isso por fora. A CSP, o HSTS, a `Permissions-Policy` e os demais cabeçalhos são conferidos, cada um uma única vez, em HTML, rota da SPA, asset, asset inexistente, API, actuator e health.
 
 ## D-108 — IP real do cliente
@@ -785,4 +790,71 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Primeira subida:** sem certificado para `DOMAIN`, o Nginx usa um provisório autoassinado, gerado no build da imagem e que nenhum navegador aceita. Com ele, o Nginx sobe e responde ao primeiro desafio.
 - **Local:** `scripts/local-cert.sh` gera uma CA descartável e um certificado para `localhost` no layout do Let's Encrypt. O `prod-check.sh` o coloca no volume `letsencrypt` e confere que o `curl` o aceita com a CA e o recusa sem ela. A pilha local não deve ser aberta num navegador de uso pessoal, porque o HSTS de `https://localhost` ficaria gravado nele.
 - **Imagens:** `certbot/certbot:v5.8.0` e `alpine:3.22.6` (estágio do certificado provisório), fixadas por digest.
+
+## D-110 — Backup e restauração
+
+- **Serviço `backup`:** a imagem própria parte da mesma imagem do PostgreSQL da pilha, para que `pg_dump` e `pg_restore` tenham a mesma versão do banco. Ela traz o `age` 1.2.1 do release oficial, conferido por sha256 (amd64 e arm64).
+  - O `crond` roda o `backup.sh` todos os dias às `BACKUP_TIME` (padrão 03:00), no fuso da operação (`TZ=APP_TIMEZONE`).
+  - O `backup.sh` faz `pg_dump -Fc` como `resort_backup` (só leitura, D-057), sem os dados de `spring_session*`, cifra com `age` para `BACKUP_AGE_RECIPIENT` e grava `resort-AAAAMMDDTHHMMSSZ.dump.age` no volume `backups`.
+  - Retenção: arquivos com 14 dias ou mais são apagados.
+  - O processo roda como root dentro do container, porque o `crond` do busybox exige; o container só alcança o banco e o volume de backups.
+- **Chave:** só a pública fica no servidor. A privada é gerada e guardada pelo operador (gerenciador de senhas e cópia offline) e só vai ao servidor, em `/dev/shm`, durante uma restauração. Quem invadir a VPS não lê os backups; perder a chave privada torna todos os backups inúteis.
+- **Restauração** (`scripts/restore.sh`, com o passo a passo no `docs/DEPLOY.md`):
+  - confere que a chave decifra o backup antes de mexer em qualquer coisa;
+  - para o Nginx, o backend e o backup;
+  - recria o banco com as permissões de banco do `postgres/initdb`;
+  - restaura como `resort_owner`;
+  - roda o `migrate` e sobe a pilha.
+
+  Serve para a mesma VPS e para uma VPS nova (os papéis vêm da criação do volume).
+- **Cópia fora da VPS: obrigatória na 11b** (confirmado). O destino exato fica para a 11b. O modelo recomendado é o operador puxar os arquivos por `rsync` com uma chave SSH restrita ao `rrsync -ro`, sem credencial de destino no servidor. A cópia só na VPS não protege contra perda do servidor, do disco ou da conta, nem contra ransomware.
+- **Testes no `prod-check.sh`:**
+  - o horário do crontab e o fuso;
+  - o arquivo começa com o cabeçalho do age;
+  - sem a chave, o `pg_restore` não lê o arquivo;
+  - com a chave, o dump traz o CPF de um Lead de teste.
+
+    O formato custom do `pg_dump` já comprime os dados, então procurar o CPF no arquivo sozinho não provaria a criptografia (achado na mutação "sem criptografia").
+  - retenção: um arquivo de 15 dias é apagado e um de 13 é mantido;
+  - a restauração com a chave errada para com mensagem clara e sem mexer no banco;
+  - **perda total**: `down -v` apaga tudo; a restauração parte da cópia do arquivo fora da pilha. Depois dela, as contagens por tabela e um hash do conteúdo de `audit_logs` batem com os de antes, o ADMIN entra, `resort_app` continua sem ownership e sem poder apagar `audit_logs`, e os triggers voltam.
+
+## D-111 — Logs sem dado pessoal na produção
+
+- **Retenção:** `json-file` com 10 MB × 5 por serviço (D-105), no máximo cerca de 50 MB por serviço.
+- **Nginx:**
+  - log de acesso sem query, Referer e User-Agent (D-107);
+  - em `/api/`, `error_log` só no nível `crit`. O log de erro do Nginx grava a linha do pedido, com a query, quando o backend falha (`upstream timed out … request: "GET /api/leads?cpf=…"`); a falha continua visível pelo status 502/504 no log de acesso e pelos logs do backend.
+  - Conectar ao backend tem limite de 5 s: fora do ar, a API responde 504 em 5 s, e não em 60 s.
+- **Backend:** as regras das fases anteriores (regra 5 do CLAUDE.md, D-069).
+- **Verificação no `prod-check.sh`:**
+  - o E2E grava os CPFs e códigos de convite que usou (`E2E_SENSITIVE_FILE`);
+  - o script faz de propósito um `GET /api/leads?cpf=…&q=…` e, com o backend parado, outro que recebe 504;
+  - em seguida, procura cada CPF (com e sem pontuação), cada código (com e sem hífen) e as senhas do ADMIN e do superusuário nos logs de todos os containers;
+  - a linha de acesso de `/api/leads` aparece sem a query.
+
+  Mutações detectadas: sem o `error_log crit` (o CPF apareceu no log de erro) e o log de acesso com `$request` (o CPF apareceu na query).
+
+## D-112 — Publicação das imagens
+
+- **Workflow `release.yml`:** roda só no push de uma tag `vX.Y.Z`.
+  - Primeiro executa os mesmos checks do `ci.yml`, chamado como workflow reutilizável: `verify`, `e2e` e `prod-stack`, para aquele commit.
+  - O job `publish` só roda se os três passarem, e só se o commit da tag estiver na `main`.
+  - O `scripts/publish-images.sh` gera `backend`, `nginx` e `backup` e publica cada uma em `ghcr.io/<dono>/<repositório>/<imagem>` com duas tags, `vX.Y.Z` e `sha-<commit>`, e com os rótulos OCI de origem, versão e revisão.
+  - O `ci.yml` deixa de rodar no push de tags (`branches: ['**']`), para os checks da tag não rodarem duas vezes.
+- **Terceira imagem:** o backup precisa do `age` junto do `pg_dump`, e não há imagem pronta com os dois. Por isso são três imagens, e não duas.
+- **Servidor:** faz `docker login ghcr.io` com um token só de leitura (`read:packages`) e usa as tags de versão no `.env.prod` (`docs/DEPLOY.md`, seção 4). O repositório fica privado antes da 11b, e as imagens seguem a visibilidade dele.
+- **Consumo** (medido na pilha local e estimado para o CI):
+
+  | Item | Estimativa |
+  |---|---|
+  | Imagens comprimidas | backend 127 MB, nginx 22 MB, backup 120 MB; cerca de 270 MB no conjunto |
+  | Uma release | os três checks (cerca de 4 + 2 + 6 min, em paralelo) mais o `publish` (cerca de 6 a 8 min, sem cache): em torno de 20 minutos de runner |
+
+  Nas versões seguintes, as camadas de base e de dependências se repetem, e cada versão tende a acrescentar dezenas de MB, não o conjunto inteiro. Uma troca de imagem base ou de dependências acrescenta de novo perto do tamanho cheio.
+
+  Enquanto o repositório é público, os minutos de Actions e o GHCR não são cobrados. Com ele privado, os minutos e o armazenamento de pacotes contam na cota do plano da conta; confira os valores atuais na página de cobrança do GitHub antes da 11b. Para não crescer sem limite, apague as versões antigas das imagens, mantendo pelo menos as duas últimas para a volta de versão.
+
+  O maior consumo de minutos não é a release: cada push num branch com PR roda o CI duas vezes (`push` e `pull_request`), cerca de 24 minutos por push. Se a cota apertar com o repositório privado, restringir o `push` à `main` corta isso pela metade.
+- **Não testado aqui:** os workflows só rodam no GitHub. A primeira tag de versão é o teste real, e dá para usar uma tag descartável.
 
