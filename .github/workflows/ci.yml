@@ -49,3 +49,10 @@ jobs:
             frontend/playwright-report
             frontend/test-results
           retention-days: 7
+
+  # Pilha de produção (D-105): imagens, docker-compose.prod.yml e verificações por fora, em paralelo.
+  prod-stack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: ./scripts/prod-check.sh

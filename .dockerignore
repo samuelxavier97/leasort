@@ -1,0 +1,11 @@
+# Contexto da imagem do Nginx (raiz do repositório): só o frontend e a pasta nginx importam.
+.git
+**/node_modules
+frontend/dist
+frontend/test-results
+frontend/playwright-report
+backend
+docs
+scripts
+.env
+.env.*

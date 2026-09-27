@@ -51,7 +51,9 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler))
                 .authorizeHttpRequests(auth -> {
                     auth.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll();
-                    auth.requestMatchers(HttpMethod.GET, "/actuator/health").permitAll();
+                    // Os probes só existem na porta interna de management do perfil prod (D-059).
+                    auth.requestMatchers(HttpMethod.GET, "/actuator/health", "/actuator/health/liveness",
+                            "/actuator/health/readiness").permitAll();
                     if (apiDocsEnabled) {
                         auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll();
                     }
