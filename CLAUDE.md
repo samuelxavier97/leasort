@@ -85,6 +85,11 @@ E2E (D-104): exige Docker e as portas 5433, 8080 e 4173 livres (pare o backend d
 - **`.env` alterado e o backend não conecta.** O backend não lê o `.env`; só o `docker-compose.yml` lê. Se mudar credenciais no `.env`, exporte as mesmas variáveis (`DB_URL`, `DB_USER`, `DB_PASSWORD`) no terminal do backend. Se o volume do banco já foi criado com outra senha, recrie com `docker compose down -v` (apaga os dados de desenvolvimento).
 - **Câmera da Portaria não abre no celular.** O navegador só libera a câmera em contexto seguro (HTTPS ou `localhost`); `http://<ip-da-máquina>:5173` não serve (D-093). Ligue o celular por USB com a depuração USB ativa, abra `chrome://inspect` no Chrome do computador, em *Port forwarding* adicione `5173` → `localhost:5173`, e no celular abra `http://localhost:5173`. No computador, `http://localhost:5173` já funciona.
 - **No Windows, `./mvnw` e `./scripts/verify.sh`.** No PowerShell use `.\mvnw.cmd`; o `verify.sh` precisa de Git Bash ou WSL.
+- **Ambiente de dev criado antes da D-113 (volume `leasort_postgres-data`).** O `docker-compose.yml` agora fixa o projeto `resort-dev`, e o volume passa a ser `resort-dev_postgres-data`.
+  - **Antes de atualizar:** rode `docker compose down`, sem `-v`, para parar o container antigo, que seguraria a porta 5432.
+  - **Se já atualizou:** o mesmo comando não acha mais o container antigo. Use `docker compose -p leasort down`.
+  - **Depois do pull:** `docker compose up -d postgres` sobe de novo com o banco vazio; o backend recria as tabelas (Flyway) e o ADMIN inicial na subida.
+  - **Volume antigo:** pode ser removido com `docker volume rm leasort_postgres-data`. O nome vem da pasta em que o repositório foi clonado; confira com `docker volume ls`.
 
 ## Fluxo de trabalho
 

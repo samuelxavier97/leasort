@@ -885,7 +885,14 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - Não mudam: o pacote Java `com.resort.platform`, o banco `resort`, os papéis `resort_owner`, `resort_app` e `resort_backup`, os volumes e o projeto do compose de produção (`name: resort`). Nenhum contém "leasort", e mudar qualquer um exigiria migrar uma instalação existente.
 - **Projeto do compose:**
   - **Produção:** o `docker-compose.prod.yml` fixa `name: resort`. Por isso, containers, rede e volumes (`resort_postgres-data`, `resort_backups` etc.) não dependem do nome da pasta.
-  - **Desenvolvimento:** o `docker-compose.yml` não fixa o nome. O projeto vem da pasta (`leasort` → volume `leasort_postgres-data`). Depois de renomear a pasta, o compose cria um volume vazio e deixa o antigo órfão.
+  - **Desenvolvimento:** o `docker-compose.yml` passa a fixar `name: resort-dev`, e o volume vira `resort-dev_postgres-data`.
+    - Motivo: sem o nome fixo, o projeto vinha da pasta (`leasort` → `leasort_postgres-data`). Ao renomear a pasta, o compose criaria um volume vazio e deixaria o antigo órfão. O volume de dev deixa de depender do nome da pasta.
+    - O nome é diferente do `resort` da produção para os dois não se confundirem na mesma máquina.
+    - A passagem para quem já tinha o ambiente está no `CLAUDE.md`, em Problemas comuns.
 - **Imagens publicadas como `leasort`:** as imagens da `v0.1.0` continuam em `ghcr.io/<dono>/leasort/*`. O GHCR não renomeia pacotes nem redireciona o nome antigo. Nenhuma instalação usa essas imagens, porque a 11b ainda não começou. A próxima versão sai com o nome novo; depois disso, os pacotes `leasort/*` podem ser apagados.
-- **Descartado:** renomear o pacote Java, o banco ou os papéis. O ganho seria só estético, e o custo seria uma migração de dados.
-- **Impacto:** nenhum na aplicação nem no banco. Quem desenvolve e renomeia a pasta perde de vista o volume de desenvolvimento antigo, e o que fazer com ele está em aberto (fixar ou não o nome do projeto de desenvolvimento).
+- **Descartado:**
+  - Renomear o pacote Java, o banco ou os papéis: o ganho seria só estético, e o custo seria uma migração de dados.
+  - Copiar o volume de dev antigo para o novo: os dados de dev são fictícios, e o backend recria as tabelas e o ADMIN inicial na subida.
+- **Impacto:**
+  - Nenhum na aplicação nem no banco de produção.
+  - No dev, a troca de volume acontece uma única vez: o banco nasce vazio na primeira subida depois da atualização. Dali em diante, renomear a pasta não muda mais o volume.
