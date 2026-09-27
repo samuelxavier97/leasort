@@ -875,3 +875,17 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   O maior consumo de minutos não é a release: cada push num branch com PR roda o CI duas vezes (`push` e `pull_request`), cerca de 24 minutos por push. Se a cota apertar com o repositório privado, restringir o `push` à `main` corta isso pela metade.
 - **Não testado aqui:** os workflows só rodam no GitHub. A primeira tag de versão é o teste real, e dá para usar uma tag descartável.
 
+
+## D-113 — Nome do produto: Resortric
+
+- **Contexto:** o repositório no GitHub foi renomeado de `leasort` para `resortric`, o nome definitivo do produto.
+- **Decisão:**
+  - A única referência a "leasort" no repositório era o container descartável do E2E, que passa a se chamar `resortric-e2e-db` (`scripts/e2e.sh`).
+  - O workflow de release e o `scripts/publish-images.sh` montam o prefixo das imagens a partir de `github.repository`. Por isso, a próxima tag publica em `ghcr.io/<dono>/resortric/{backend,nginx,backup}` sem mudança no código. `.env.prod.example` e `docs/DEPLOY.md` já usam `<dono>/<repositório>`.
+  - Não mudam: o pacote Java `com.resort.platform`, o banco `resort`, os papéis `resort_owner`, `resort_app` e `resort_backup`, os volumes e o projeto do compose de produção (`name: resort`). Nenhum contém "leasort", e mudar qualquer um exigiria migrar uma instalação existente.
+- **Projeto do compose:**
+  - **Produção:** o `docker-compose.prod.yml` fixa `name: resort`. Por isso, containers, rede e volumes (`resort_postgres-data`, `resort_backups` etc.) não dependem do nome da pasta.
+  - **Desenvolvimento:** o `docker-compose.yml` não fixa o nome. O projeto vem da pasta (`leasort` → volume `leasort_postgres-data`). Depois de renomear a pasta, o compose cria um volume vazio e deixa o antigo órfão.
+- **Imagens publicadas como `leasort`:** as imagens da `v0.1.0` continuam em `ghcr.io/<dono>/leasort/*`. O GHCR não renomeia pacotes nem redireciona o nome antigo. Nenhuma instalação usa essas imagens, porque a 11b ainda não começou. A próxima versão sai com o nome novo; depois disso, os pacotes `leasort/*` podem ser apagados.
+- **Descartado:** renomear o pacote Java, o banco ou os papéis. O ganho seria só estético, e o custo seria uma migração de dados.
+- **Impacto:** nenhum na aplicação nem no banco. Quem desenvolve e renomeia a pasta perde de vista o volume de desenvolvimento antigo, e o que fazer com ele está em aberto (fixar ou não o nome do projeto de desenvolvimento).

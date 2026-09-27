@@ -7,7 +7,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-DB_CONTAINER="leasort-e2e-db"
+DB_CONTAINER="resortric-e2e-db"
 DB_PORT=5433
 LOG_DIR="$ROOT/frontend/test-results/e2e-logs"
 
