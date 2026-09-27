@@ -50,9 +50,19 @@ jobs:
             frontend/test-results
           retention-days: 7
 
-  # Pilha de produção (D-105): imagens, docker-compose.prod.yml e verificações por fora, em paralelo.
+  # Pilha de produção (D-105): imagens, docker-compose.prod.yml, verificações por fora e a suíte E2E
+  # por HTTPS, em paralelo aos demais.
   prod-stack:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
       - run: ./scripts/prod-check.sh

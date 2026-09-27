@@ -1,0 +1,28 @@
+#!/bin/sh
+# Variáveis derivadas para o envsubst dos templates (D-107). Roda antes do 20-envsubst-on-templates.sh.
+
+# HSTS: um ano por padrão; includeSubDomains e preload só se ligados (não se sabe se o domínio do
+# cliente é exclusivo).
+RESORT_HSTS_VALUE="max-age=${HSTS_MAX_AGE:-31536000}"
+[ "${HSTS_INCLUDE_SUBDOMAINS:-false}" = "true" ] && RESORT_HSTS_VALUE="$RESORT_HSTS_VALUE; includeSubDomains"
+[ "${HSTS_PRELOAD:-false}" = "true" ] && RESORT_HSTS_VALUE="$RESORT_HSTS_VALUE; preload"
+export RESORT_HSTS_VALUE
+
+# Porta do HTTPS no redirecionamento: nenhuma na 443; a publicada, fora dela (verificação local).
+if [ -z "${PUBLIC_HTTPS_PORT:-}" ] || [ "${PUBLIC_HTTPS_PORT}" = "443" ]; then
+  RESORT_HTTPS_PORT_SUFFIX=""
+else
+  RESORT_HTTPS_PORT_SUFFIX=":${PUBLIC_HTTPS_PORT}"
+fi
+export RESORT_HTTPS_PORT_SUFFIX
+
+# Certificado: o do Let's Encrypt para DOMAIN; sem ele, o provisório da imagem, só para subir e
+# responder ao primeiro desafio (D-109).
+RESORT_TLS_CERT="/etc/letsencrypt/live/${DOMAIN:-sem-dominio}/fullchain.pem"
+RESORT_TLS_KEY="/etc/letsencrypt/live/${DOMAIN:-sem-dominio}/privkey.pem"
+if [ ! -r "$RESORT_TLS_CERT" ] || [ ! -r "$RESORT_TLS_KEY" ]; then
+  echo "18-resort.envsh: sem certificado para '${DOMAIN:-}'; usando o provisório da imagem" >&2
+  RESORT_TLS_CERT=/etc/nginx/tls/provisional.crt
+  RESORT_TLS_KEY=/etc/nginx/tls/provisional.key
+fi
+export RESORT_TLS_CERT RESORT_TLS_KEY

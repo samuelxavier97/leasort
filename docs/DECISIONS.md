@@ -322,6 +322,22 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
     - criar, alterar ou apagar tabelas, índices, views e funções.
 
     Os testes também provam que migrar de novo não muda nada, que `resort_backup` só lê e que a aplicação sobe e faz login como `resort_app`. Três mutações foram detectadas: `resort_app` como membro de `resort_owner`, sem o `REVOKE` e sem os privilégios padrão.
+- **Complemento (Fase 11a, PR 2, pedido na revisão): `pg_hba.conf`.** O `postgres/pg-entrypoint.sh` gera o arquivo a cada subida, fora do volume de dados (`-c hba_file=...`), a partir de `INTERNAL_SUBNET`, e chama o entrypoint oficial.
+
+  | Regra | Quem | Por onde | Resultado |
+  |---|---|---|---|
+  | `local all postgres peer` | superusuário | socket local, dentro do container | aceito |
+  | `local all all reject` | qualquer outro papel | socket local | recusado |
+  | `host resort resort_owner,resort_app,resort_backup <sub-rede interna> scram-sha-256` | os três papéis | sub-rede interna do compose, com senha | aceito |
+  | `host all all 0.0.0.0/0 reject` e `::/0 reject` | qualquer outra combinação | rede | recusado |
+
+  O superusuário pela rede é recusado mesmo com a senha certa. O `prod-check.sh` confere que:
+  - um container na própria rede interna, com a senha do superusuário, recebe `pg_hba.conf rejects connection`;
+  - o superusuário entra pelo socket local;
+  - `resort_app` pelo socket local é recusado;
+  - as conexões da aplicação são de `resort_app`, vindas do IP do container do backend.
+
+  A mutação que liberou o superusuário pela rede foi detectada. Os testes do backend com Testcontainers continuam sem o `pg_hba`, porque conectam pela porta mapeada do host.
 
 ## D-058 — Dispatch de erro liberado no Spring Security
 
@@ -696,4 +712,77 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - A importação usa o `BusinessCalendar.today()`.
   - Os containers rodam com `TZ=UTC`, e o comportamento não depende disso.
 - **Testes:** o `OperationDayValidationTest` roda com o fuso padrão da JVM em `Pacific/Kiritimati` e o relógio às 22:30 de 19/09 em São Paulo (20/09 em UTC). Em Lead, acompanhante e importação, 19/09 é aceito e 20/09 é recusado. As mutações (o validador sem o relógio da operação e a importação com `LocalDate.now()`) derrubam os três casos.
+
+## D-107 — Nginx de borda: TLS, cabeçalhos, CSP, cache e limites
+
+- **Portas:**
+  - 8080 no container, publicada como 80, só responde ao desafio do Let's Encrypt (`/.well-known/acme-challenge/`, por HTTP) e ao healthcheck; todo o resto recebe 301 para HTTPS, com caminho e query;
+  - 8443, publicada como 443, é o HTTPS com HTTP/2.
+
+  Fora da porta 443, a verificação local mantém a porta no redirecionamento (`PUBLIC_HTTPS_PORT`).
+- **TLS:** configuração "intermediate" da Mozilla sem suítes DHE: só TLS 1.2 e 1.3, cifras ECDHE com AEAD, sem tickets de sessão. Sem OCSP stapling, porque o Let's Encrypt encerrou o OCSP em 2025.
+- **Cabeçalhos:** em todas as respostas, inclusive erros, com `always` e incluídos em cada location. O backend manda os mesmos pelo Spring Security; eles são escondidos (`proxy_hide_header`) para não sair em dobro, e o HSTS do Spring traria `includeSubDomains`.
+  - `Strict-Transport-Security: max-age=31536000`, com `includeSubDomains` e `preload` ligáveis por variável (confirmado);
+  - `Content-Security-Policy` (ver abaixo);
+  - `Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), usb=()` (D-093);
+  - `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` e `X-Frame-Options: DENY`.
+- **CSP:**
+
+  ```
+  default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:;
+  connect-src 'self'; font-src 'self'; media-src 'self'; worker-src 'self'; object-src 'none';
+  base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  ```
+
+  - `style-src 'unsafe-inline'` é necessário porque o sonner e o Radix injetam `<style>` com conteúdo variável (confirmado); os scripts continuam só do próprio site.
+  - `img-src blob:` serve para o QR do convite. O vídeo da câmera usa `srcObject` e não precisa de `media-src blob:`; `data:` e `worker-src blob:`, previstos no plano, ficaram de fora porque nada os usa.
+  - O E2E registra as violações do console do Chromium em todos os contextos e reprova o teste em qualquer uma. A suíte inteira roda contra a pilha por HTTPS, inclusive o E5, que percorre as telas de cada perfil com gráficos e diálogo.
+  - A mutação que tirou `'unsafe-inline'` foi detectada pelo E2E.
+- **SPA e cache:**
+  - `try_files $uri /index.html` fora de `/api`, `/actuator` e `/v3`;
+  - `/assets/*` com `public, max-age=31536000, immutable`, e arquivo inexistente é 404;
+  - `index.html` e as rotas da SPA com `no-cache`.
+- **Rotas do backend:** só `/api/` e `/actuator/health` (encaminhado ao readiness interno, D-059) chegam a ele. `/actuator/*` e `/v3/*` dão 404.
+- **Limites:**
+  - `client_max_body_size 6m` em `/api/`: a importação de 4,9 MB passa, e 7 MB recebe 413 do próprio Nginx;
+  - `/api/exports/` com `proxy_buffering off` e `proxy_read_timeout`/`proxy_send_timeout` de 1900 s, acima dos 30 min da D-101. A verificação lê o `nginx -T`; o envio aos poucos de uma exportação grande não é medido.
+- **Log de acesso:** formato próprio, `$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time`, sem query string, Referer nem User-Agent, porque `/api/leads?cpf=…` e a busca podem levar CPF. O log de erro do Nginx inclui a linha do pedido quando há falha de upstream; o risco residual e a verificação dos logs ficam para o PR 3.
+- **Imagem e verificação:** o `nginx-unprivileged` continua sem root. `server_tokens off`. O `prod-check.sh` confere tudo isso por fora. A CSP, o HSTS, a `Permissions-Policy` e os demais cabeçalhos são conferidos, cada um uma única vez, em HTML, rota da SPA, asset, asset inexistente, API, actuator e health.
+
+## D-108 — IP real do cliente
+
+- **Na pilha:**
+  - O Nginx tem IP fixo na rede interna (`NGINX_INTERNAL_IP`, padrão 172.30.0.10) e **sobrescreve** o `X-Forwarded-For` com o `$remote_addr` que viu, descartando o que o cliente mandar.
+  - No perfil `prod`, o Tomcat usa `forward-headers-strategy: native` com `internal-proxies` igual a `\Q${TRUSTED_PROXY_IP}\E`: só o IP do Nginx, comparado literalmente. O padrão do Tomcat confia em toda a faixa 172.16/12, que inclui as redes do Docker.
+  - Assim, o `getRemoteAddr()` já usado no login, na exportação e na auditoria é o IP do cliente, e o limite de login (D-017) passa a contar por ele.
+- **Testes:**
+  - `ProductionForwardedIpTest`: o perfil `prod` com Tomcat real aceita o `X-Forwarded-For` só vindo do proxy confiável e o ignora vindo de outro endereço. Sem a propriedade `internal-proxies`, o teste falha.
+  - `prod-check.sh`:
+    - um login com `X-Forwarded-For` forjado grava na auditoria o IP que o Nginx viu, e não o forjado nem o do Nginx;
+    - cinco falhas trocando o IP forjado levam a 6ª tentativa a 429;
+    - sem a sobrescrita no Nginx, o IP forjado vai para a auditoria (mutação detectada).
+- **Como o Docker publica as portas e quando o IP de origem se perde:**
+  - Uma porta publicada vira uma regra DNAT do iptables (cadeias `DOCKER`/`DOCKER-USER`). O pacote de um cliente externo chega ao container com o **IP de origem preservado**.
+  - O `docker-proxy` (userland-proxy, ligado por padrão) atende ao que o DNAT não cobre: conexões feitas do próprio host (localhost e hairpin) e IPv6 quando o Docker não tem IPv6 na rede do container. Nesses casos, o Nginx vê o IP do gateway da rede do Docker (por exemplo, 172.30.0.1), e não o do cliente.
+  - Na verificação local, o cliente é o próprio host, por isso o IP visto é o do gateway (172.30.250.1). A verificação prova a cadeia (o IP que o Nginx vê é o gravado), não o IP público.
+- **Configuração para preservar o IP:**
+  - portas publicadas explicitamente em IPv4 (`HTTP_BIND`/`HTTPS_BIND`, padrão `0.0.0.0`), para o Docker não abrir o IPv6 pelo `docker-proxy`;
+  - na VPS, `"userland-proxy": false` no `/etc/docker/daemon.json`;
+  - sem registro AAAA para o domínio, a menos que o IPv6 do Docker seja configurado com `ip6tables`.
+- **ufw:** as portas publicadas pelo Docker não passam pelas regras do ufw, porque as regras do Docker entram antes, na tabela nat e na cadeia `DOCKER-USER`. Por isso **nenhuma porta além de 80 e 443 pode ser publicada**. PostgreSQL, backend e a porta 8081 não têm `ports`, e o `prod-check.sh` falha se algum serviço além do Nginx publicar porta.
+- **Verificação da 11b (runbook do PR 3):**
+  - o log do Nginx mostra IPs públicos, não 172.x;
+  - `ss -ltnp` não mostra `docker-proxy`;
+  - login a partir de um celular fora da rede do servidor, conferindo na auditoria que o IP gravado é o público do celular.
+
+## D-109 — Certificados
+
+- **Let's Encrypt, desafio HTTP-01 por webroot:**
+  - O volume `acme-webroot` é compartilhado entre o `certbot` (leitura e escrita) e o Nginx (só leitura); o volume `letsencrypt` guarda os certificados.
+  - `scripts/issue-cert.sh <.env.prod>` faz a primeira emissão, com `DOMAIN`, `LETSENCRYPT_EMAIL` e `LETSENCRYPT_STAGING` (`true` usa o ambiente de testes, recomendado primeiro), e reinicia o Nginx. `--print` mostra o comando sem executar.
+  - O serviço `certbot`, no perfil `letsencrypt` (`COMPOSE_PROFILES=letsencrypt` no `.env.prod`), roda `certbot renew` a cada 12 h.
+  - O Nginx recarrega a cada 6 h para pegar o certificado renovado.
+- **Primeira subida:** sem certificado para `DOMAIN`, o Nginx usa um provisório autoassinado, gerado no build da imagem e que nenhum navegador aceita. Com ele, o Nginx sobe e responde ao primeiro desafio.
+- **Local:** `scripts/local-cert.sh` gera uma CA descartável e um certificado para `localhost` no layout do Let's Encrypt. O `prod-check.sh` o coloca no volume `letsencrypt` e confere que o `curl` o aceita com a CA e o recusa sem ela. A pilha local não deve ser aberta num navegador de uso pessoal, porque o HSTS de `https://localhost` ficaria gravado nele.
+- **Imagens:** `certbot/certbot:v5.8.0` e `alpine:3.22.6` (estágio do certificado provisório), fixadas por digest.
 

@@ -55,6 +55,7 @@ class ProductionStartupTest {
                 "--DB_PASSWORD=" + APP_PASSWORD,
                 "--server.port=0",
                 "--MANAGEMENT_PORT=" + managementPort,
+                "--TRUSTED_PROXY_IP=172.30.0.10",
                 "--app.bootstrap-admin.email=admin@producao.local",
                 "--app.bootstrap-admin.password=senha-inicial-de-teste");
         Environment env = app.getEnvironment();

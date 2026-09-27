@@ -19,6 +19,10 @@ services:
       DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:?defina DB_OWNER_PASSWORD}
       DB_APP_PASSWORD: ${DB_APP_PASSWORD:?defina DB_APP_PASSWORD}
       DB_BACKUP_PASSWORD: ${DB_BACKUP_PASSWORD:?defina DB_BACKUP_PASSWORD}
+      INTERNAL_SUBNET: ${INTERNAL_SUBNET:-172.30.0.0/24}
+    # pg_hba.conf gerado a cada subida: superusuário só pelo socket local; os papéis só pela sub-rede
+    # interna (D-057).
+    entrypoint: ["/resort/pg-entrypoint.sh"]
     # Memória para uma VPS de 2 GB (D-105); para 1 GB, ver .env.prod.example.
     command:
       - postgres
@@ -36,6 +40,7 @@ services:
       - pgdata:/var/lib/postgresql/data
       # Papéis resort_owner, resort_app e resort_backup, na criação do volume (D-057).
       - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+      - ./postgres/pg-entrypoint.sh:/resort/pg-entrypoint.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d resort"]
       interval: 5s
@@ -76,6 +81,8 @@ services:
       APP_BOOTSTRAP_ADMIN_EMAIL: ${APP_BOOTSTRAP_ADMIN_EMAIL:?defina APP_BOOTSTRAP_ADMIN_EMAIL}
       APP_BOOTSTRAP_ADMIN_PASSWORD: ${APP_BOOTSTRAP_ADMIN_PASSWORD:?defina APP_BOOTSTRAP_ADMIN_PASSWORD}
       JAVA_TOOL_OPTIONS: ${BACKEND_JAVA_OPTS:--XX:MaxRAMPercentage=60 -XX:+UseSerialGC -Xss512k -XX:+ExitOnOutOfMemoryError}
+      # Único proxy cujo X-Forwarded-For é aceito: o IP fixo do Nginx na rede interna (D-108).
+      TRUSTED_PROXY_IP: ${NGINX_INTERNAL_IP:-172.30.0.10}
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,8 +104,18 @@ services:
     image: ${NGINX_IMAGE:?defina NGINX_IMAGE}
     environment:
       RESORT_NAME: ${RESORT_NAME:-}
+      DOMAIN: ${DOMAIN:?defina DOMAIN}
+      PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-443}
+      HSTS_MAX_AGE: ${HSTS_MAX_AGE:-31536000}
+      HSTS_INCLUDE_SUBDOMAINS: ${HSTS_INCLUDE_SUBDOMAINS:-false}
+      HSTS_PRELOAD: ${HSTS_PRELOAD:-false}
+    # Só 80 e 443 no host, em IPv4 (D-108: IP de origem preservado; ver docs/DEPLOY.md).
     ports:
-      - "${HTTP_PORT:-80}:8080"
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:8080"
+      - "${HTTPS_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:8443"
+    volumes:
+      - letsencrypt:/etc/letsencrypt:ro
+      - acme-webroot:/var/www/acme:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -108,6 +125,25 @@ services:
       timeout: 5s
       retries: 3
     mem_limit: ${NGINX_MEMORY:-64m}
+    restart: unless-stopped
+    networks:
+      internal:
+        ipv4_address: ${NGINX_INTERNAL_IP:-172.30.0.10}
+    logging: *logging
+
+  # Renovação dos certificados do Let's Encrypt a cada 12 h (D-109). Só com COMPOSE_PROFILES=letsencrypt;
+  # a primeira emissão é feita com scripts/issue-cert.sh.
+  certbot:
+    image: ${CERTBOT_IMAGE:-certbot/certbot:v5.8.0@sha256:f70ad0adbb7e117f0fe42a63c553f28ea451edabc0148757b6efcd9735acaa20}
+    profiles: [letsencrypt]
+    entrypoint: ["/bin/sh", "-c", "trap exit TERM; while :; do certbot renew --webroot -w /var/www/acme --quiet; sleep 12h & wait $${!}; done"]
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - acme-webroot:/var/www/acme
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -d /etc/letsencrypt"]
+      interval: 1h
+    mem_limit: 128m
     restart: unless-stopped
     networks: [internal]
     logging: *logging
@@ -120,3 +156,5 @@ networks:
 
 volumes:
   pgdata:
+  letsencrypt:
+  acme-webroot:

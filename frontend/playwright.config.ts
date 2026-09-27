@@ -10,7 +10,9 @@ export default defineConfig({
   timeout: 90_000,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   use: {
-    baseURL: 'http://localhost:4173',
+    // E2E_BASE_URL aponta para a pilha de produção local por HTTPS (scripts/prod-check.sh, D-105).
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:4173',
+    ignoreHTTPSErrors: (process.env.E2E_BASE_URL ?? '').startsWith('https:'),
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
