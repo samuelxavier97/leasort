@@ -1,5 +1,5 @@
 import { test as base, devices, expect, type Browser, type BrowserContext, type Page } from '@playwright/test'
-import { Api, BASE_URL } from './api.ts'
+import { Api, BASE_URL, IGNORE_HTTPS_ERRORS } from './api.ts'
 import { OPERATION_TIMEZONE, uniqueSuffix } from './data.ts'
 
 export type Role = 'ADMIN' | 'PROSPECTOR' | 'GATE' | 'HOST'
@@ -41,6 +41,8 @@ export function adminCredentials(): { email: string; password: string } {
 export class World {
   readonly suffix = uniqueSuffix()
   private readonly contexts: BrowserContext[] = []
+  /** Violações de CSP de todos os contextos do teste; qualquer uma reprova o teste (D-107). */
+  readonly cspViolations: string[] = []
   private readonly apis: Api[] = []
 
   private readonly browser: Browser
@@ -60,6 +62,7 @@ export class World {
 
   async dispose(): Promise<void> {
     for (const context of this.contexts) await context.close()
+    expect(this.cspViolations, 'violações de Content-Security-Policy').toEqual([])
     for (const api of this.apis) await api.dispose()
     await this.admin.dispose()
   }
@@ -103,9 +106,11 @@ export class World {
     const context = await this.browser.newContext({
       ...(role === 'GATE' ? devices['Pixel 7'] : {}),
       baseURL: BASE_URL,
+      ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS,
       locale: 'pt-BR',
       timezoneId: OPERATION_TIMEZONE,
     })
+    watchCsp(context, this.cspViolations)
     this.contexts.push(context)
     return context
   }
@@ -117,6 +122,15 @@ export class World {
     await expect(page).toHaveURL(LANDING[role])
     return page
   }
+}
+
+/** Registra as violações de CSP que o Chromium informa no console de qualquer página do contexto. */
+export function watchCsp(context: BrowserContext, violations: string[]): void {
+  context.on('console', (message) => {
+    if (message.type() === 'error' && /Content Security Policy/i.test(message.text())) {
+      violations.push(`${message.location().url}: ${message.text()}`)
+    }
+  })
 }
 
 export async function login(page: Page, email: string, password: string): Promise<void> {

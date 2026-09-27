@@ -9,8 +9,15 @@ spring:
     enabled: false
 
 server:
-  # IP real do cliente atrás do Nginx (limite de login e auditoria); validado na Fase 11.
+  # IP real do cliente (limite de login e auditoria, D-108): o Tomcat troca o endereço remoto pelo
+  # X-Forwarded-For só quando o pedido vem do IP interno do Nginx; de qualquer outro, ignora o cabeçalho.
   forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      internal-proxies: "\\Q${TRUSTED_PROXY_IP}\\E"
+      trusted-proxies: "^$"
+      remote-ip-header: X-Forwarded-For
+      protocol-header: X-Forwarded-Proto
   servlet:
     session:
       cookie:

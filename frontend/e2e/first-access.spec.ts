@@ -1,5 +1,5 @@
 import { request } from '@playwright/test'
-import { BASE_URL } from './support/api.ts'
+import { BASE_URL, IGNORE_HTTPS_ERRORS } from './support/api.ts'
 import { adminCredentials, expect, login, test } from './support/fixtures.ts'
 
 /** E3: primeiro acesso com troca obrigatória e saída que invalida a sessão no servidor (§14, §24). */
@@ -46,7 +46,7 @@ test('E3: usuário criado pelo ADMIN troca a senha no primeiro acesso, entra e, 
   await page.goto('/chegadas')
   await expect(page).toHaveURL('/login')
 
-  const oldSession = await request.newContext({ baseURL: BASE_URL, storageState: signedIn })
+  const oldSession = await request.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS, storageState: signedIn })
   expect((await oldSession.get('/api/auth/me')).status()).toBe(401)
   await oldSession.dispose()
 

@@ -2,9 +2,9 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, devices, type Page } from '@playwright/test'
-import { BASE_URL } from './support/api.ts'
+import { BASE_URL, IGNORE_HTTPS_ERRORS } from './support/api.ts'
 import { fakeCpf, OPERATION_TIMEZONE, operationDate } from './support/data.ts'
-import { expect, login, test } from './support/fixtures.ts'
+import { expect, login, test, watchCsp } from './support/fixtures.ts'
 
 const WIDTH = 640
 const HEIGHT = 480
@@ -83,10 +83,12 @@ test('E4: a câmera lê o QR do convite e a Portaria vê o acesso liberado', asy
     const context = await cameraBrowser.newContext({
       ...devices['Pixel 7'],
       baseURL: BASE_URL,
+      ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS,
       locale: 'pt-BR',
       timezoneId: OPERATION_TIMEZONE,
       permissions: ['camera'],
     })
+    watchCsp(context, world.cspViolations)
     gatePage = await context.newPage()
     await login(gatePage, gate.email, gate.password)
     await expect(gatePage).toHaveURL('/portaria')

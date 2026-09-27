@@ -1,6 +1,9 @@
 import { expect, request, type APIRequestContext, type APIResponse } from '@playwright/test'
 
-export const BASE_URL = 'http://localhost:4173'
+/** Pilha de E2E (vite preview) ou, com E2E_BASE_URL, a pilha de produção local por HTTPS (D-105). */
+export const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:4173'
+/** A pilha de produção local usa um certificado de uma CA descartável (scripts/local-cert.sh). */
+export const IGNORE_HTTPS_ERRORS = BASE_URL.startsWith('https:')
 
 /**
  * Cliente da API para preparar dados (usuários e Leads) com a sessão e o CSRF reais (D-054):
@@ -14,7 +17,7 @@ export class Api {
   }
 
   static async create(): Promise<Api> {
-    const api = new Api(await request.newContext({ baseURL: BASE_URL }))
+    const api = new Api(await request.newContext({ baseURL: BASE_URL, ignoreHTTPSErrors: IGNORE_HTTPS_ERRORS }))
     await api.context.get('/api/auth/me')
     return api
   }
