@@ -798,6 +798,23 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - O `backup.sh` faz `pg_dump -Fc` como `resort_backup` (só leitura, D-057), sem os dados de `spring_session*`, cifra com `age` para `BACKUP_AGE_RECIPIENT` e grava `resort-AAAAMMDDTHHMMSSZ.dump.age` no volume `backups`.
   - Retenção: arquivos com 14 dias ou mais são apagados.
   - O processo roda como root dentro do container, porque o `crond` do busybox exige; o container só alcança o banco e o volume de backups.
+- **Verificação de saúde (acréscimo antes do merge do PR 3):** o healthcheck do container roda o `backup-health.sh`.
+  - **Regra:**
+    - falha se o `crond` estiver parado;
+    - com algum backup no volume, o mais recente (`resort-*.dump.age`) precisa ter menos de `BACKUP_MAX_AGE_HOURS` (26 h: um dia mais folga), e um reinício do container não esconde um backup parado;
+    - sem nenhum backup (pilha recém-criada), vale uma carência de 26 h desde a subida do container, porque o primeiro backup só sai no próximo `BACKUP_TIME`.
+  - A mensagem de cada verificação diz o motivo e aparece no `docker inspect`.
+  - O intervalo padrão é 5 min (`BACKUP_HEALTH_INTERVAL`), com 2 tentativas.
+  - **O que fazer quando fica `unhealthy`:** runbook, seção 13.2.
+  - **Testes no `prod-check.sh`,** pelo status do próprio Docker, com intervalo de 5 s e esperando também a mensagem da checagem mais recente, porque o status sozinho pode vir de uma checagem anterior (achado ao escrever o teste):
+    - pilha nova sem backup: saudável pela carência;
+    - subida marcada 27 h atrás e nenhum backup: `unhealthy`;
+    - de volta à carência: saudável;
+    - com backup recente: saudável;
+    - último backup com 30 h: `unhealthy`, e continua assim depois de reiniciar o container;
+    - backup em dia de novo: saudável.
+
+    A mutação que voltou ao healthcheck antigo (`pgrep crond`) reprovou.
 - **Chave:** só a pública fica no servidor. A privada é gerada e guardada pelo operador (gerenciador de senhas e cópia offline) e só vai ao servidor, em `/dev/shm`, durante uma restauração. Quem invadir a VPS não lê os backups; perder a chave privada torna todos os backups inúteis.
 - **Restauração** (`scripts/restore.sh`, com o passo a passo no `docs/DEPLOY.md`):
   - confere que a chave decifra o backup antes de mexer em qualquer coisa;

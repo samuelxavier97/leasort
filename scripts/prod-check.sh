@@ -68,6 +68,7 @@ APP_BOOTSTRAP_ADMIN_EMAIL=$ADMIN_EMAIL
 APP_BOOTSTRAP_ADMIN_PASSWORD=$BOOTSTRAP_PASSWORD
 INTERNAL_SUBNET=172.30.250.0/24
 NGINX_INTERNAL_IP=$NGINX_IP
+BACKUP_HEALTH_INTERVAL=5s
 EOF
 # Valor com aspas no .env do compose: entre aspas simples, sem interpolação.
 printf "RESORT_NAME='%s'\n" "$RESORT_NAME_CHECK" >>"$ENV_FILE"
@@ -450,6 +451,27 @@ CRON_LINE="$(compose exec -T backup cut -d' ' -f1-5 /etc/crontabs/root)"
 TZ_LINE="$(compose exec -T backup grep '^export TZ=' /etc/backup.env)"
 check "o backup roda às 03:00 no fuso da operação ($CRON_LINE; $TZ_LINE)" \
   test "$CRON_LINE|$TZ_LINE" = "0 3 * * *|export TZ='America/Sao_Paulo'"
+# Saúde do backup pelo healthcheck do próprio Docker (intervalo de 5 s só nesta verificação).
+health_output() { docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' "$(compose ps -q backup)" | grep . | tail -1; }
+# wait_health <healthy|unhealthy> <trecho da mensagem>: até 60 s, até o status do Docker e a mensagem da
+# checagem mais recente baterem (o status sozinho pode vir de uma checagem anterior à mudança).
+wait_health() {
+  for _ in $(seq 60); do
+    if [ "$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q backup)")" = "$1" ] \
+      && health_output | grep -qF "$2"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+check "pilha recém-criada, sem backup: saudável pela carência" wait_health healthy "nenhum backup ainda; carência"
+# Subida há 27 h e nenhum backup: a carência acabou.
+compose exec -T backup sh -c 'echo $(( $(date +%s) - 27 * 3600 )) >/run/backup-started'
+check "sem backup 27 h depois da subida: unhealthy" wait_health unhealthy "nenhum backup em /backups após 26 h"
+compose exec -T backup sh -c 'date +%s >/run/backup-started'
+check "de volta à carência: saudável" wait_health healthy "nenhum backup ainda; carência"
+
 OLD="$(date -u -d '15 days ago' +%Y%m%d%H%M)"
 RECENT="$(date -u -d '13 days ago' +%Y%m%d%H%M)"
 compose exec -T backup sh -c "touch -t $OLD /backups/resort-19990101T000000Z.dump.age && touch -t $RECENT /backups/resort-19990102T000000Z.dump.age"
@@ -467,6 +489,15 @@ check "retenção: arquivo com 15 dias apagado, com 13 dias mantido" bash -c \
   "echo '$BACKUP_LOG' | grep -q 'apagado por retenção: /backups/resort-19990101T000000Z.dump.age' &&
    ! echo '$BACKUP_LOG' | grep -q 'resort-19990102T000000Z'"
 docker cp "$(compose ps -q backup):/backups/$BACKUP_NAME" "$WORK/$BACKUP_NAME"
+check "com um backup recente: saudável" wait_health healthy "ok, último $BACKUP_NAME"
+# O último backup passa a ter 30 h: o backup parou de rodar.
+compose exec -T backup sh -c "touch -t $(date -u -d '30 hours ago' +%Y%m%d%H%M) /backups/$BACKUP_NAME"
+check "com o último backup de 30 h atrás: unhealthy" wait_health unhealthy "($BACKUP_NAME) tem mais de 26 h"
+# Um reinício do container não esconde o backup parado (a carência só vale sem nenhum backup).
+compose restart backup >/dev/null 2>&1
+check "depois de reiniciar o container, continua unhealthy" wait_health unhealthy "($BACKUP_NAME) tem mais de 26 h"
+compose exec -T backup sh -c "touch /backups/$BACKUP_NAME"
+check "com o backup em dia de novo: saudável" wait_health healthy "ok, último $BACKUP_NAME"
 check "o arquivo é cifrado com age" test "$(head -1 "$WORK/$BACKUP_NAME")" = "age-encryption.org/v1"
 check "sem a chave, o arquivo não é um dump legível (o pg_restore recusa)" bash -c \
   "! docker run --rm -i '$BACKUP_IMAGE' pg_restore --list <'$WORK/$BACKUP_NAME' >/dev/null 2>&1"

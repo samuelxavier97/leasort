@@ -18,4 +18,5 @@ RUN set -eu; \
     rm -rf /tmp/age /tmp/age.tgz
 COPY --chmod=755 backup/backup.sh /usr/local/bin/backup.sh
 COPY --chmod=755 backup/entrypoint.sh /usr/local/bin/backup-entrypoint.sh
+COPY --chmod=755 backup/health.sh /usr/local/bin/backup-health.sh
 ENTRYPOINT ["/usr/local/bin/backup-entrypoint.sh"]

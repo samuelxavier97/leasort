@@ -191,7 +191,11 @@ Faça todas depois do primeiro deploy e depois de cada mudança de infraestrutur
    - **faça login a partir de um celular fora da rede do servidor (no 4G/5G, com o Wi-Fi desligado)**, e na tela de Auditoria, na linha `LOGIN` desse acesso, confira que o IP é o IP público do celular. Veja o IP do celular num site como "qual é meu ip" no próprio celular.
    - Se aparecer `172.x`, revise a seção 3 (`userland-proxy`, AAAA).
 6. **Câmera:** no mesmo celular, com o perfil de Portaria, abra "Validar Convite" e leia o QR de um convite de teste. É a pendência da D-093; só funciona com HTTPS.
-7. **Backup:** `dc exec backup backup.sh` faz um backup na hora. Confira com `dc exec backup ls -l /backups` e faça a cópia para fora do servidor (seção 10).
+7. **Backup:**
+   - `dc exec backup backup.sh` faz um backup na hora;
+   - confira com `dc exec backup ls -l /backups`;
+   - `dc ps backup` fica `(healthy)` (seção 13.2);
+   - faça a cópia para fora do servidor (seção 10).
 
 ## 9. Atualização de versão
 
@@ -284,8 +288,40 @@ Em seguida, a seção 11.1 com o backup da cópia externa, e depois o certificad
 
 ## 13. Manutenção de rotina
 
+### 13.1 Estado dos containers
+
+```bash
+dc ps          # coluna STATUS: "Up … (healthy)", "(unhealthy)" ou "(health: starting)"
+docker inspect --format '{{range .State.Health.Log}}{{.Output}}{{end}}' resort-backup-1 | tail -3
+```
+
+- Todos os serviços de longa duração devem aparecer `(healthy)`. O `migrate` aparece `Exited (0)`, e isso é o normal.
+- O segundo comando mostra as últimas mensagens da verificação de saúde de um container. Troque `resort-backup-1` pelo nome de outro serviço conforme a coluna NAME do `dc ps`.
+
+### 13.2 Backup `unhealthy`
+
+O container do backup só fica saudável se o `crond` estiver rodando e se **o backup mais recente tiver menos de 26 horas** (D-110). Numa pilha recém-criada, sem nenhum backup, há uma carência de 26 horas desde a subida, porque o primeiro backup só sai no próximo `BACKUP_TIME`. `unhealthy` quer dizer que **a última noite ficou sem backup**. Trate no mesmo dia:
+
+1. **Veja a mensagem** (13.1):
+   - "o último backup (…) tem mais de 26 h": o backup parou de rodar ou falhou;
+   - "nenhum backup em /backups após 26 h no ar": nunca houve backup;
+   - "crond parado": o agendador morreu.
+2. **Veja o log do backup:** `dc logs --tail 50 backup`. Causas comuns:
+   - banco fora do ar (`dc ps postgres`);
+   - senha de `resort_backup` diferente da do banco (`DB_BACKUP_PASSWORD` trocada no `.env.prod` depois da criação do volume);
+   - `BACKUP_AGE_RECIPIENT` vazia ou errada;
+   - disco cheio (`df -h` e `docker system df`).
+3. **Corrija e rode um backup na hora:** `dc exec backup backup.sh`. Ele deve terminar com `backup: resort-….dump.age (… bytes)`. Se o `crond` estava parado, `dc restart backup`.
+4. **Confirme a volta:** em até 5 minutos (o intervalo da verificação), `dc ps backup` volta a `(healthy)`.
+5. **Garanta a cópia fora da VPS** do backup novo (seção 10) e confira que a cópia externa também está em dia.
+
+Se o backup não voltar no mesmo dia, trate como incidente: até resolver, qualquer perda do servidor volta ao último backup copiado para fora.
+
+### 13.3 Rotina
+
+- **Diária** (ou por um monitor externo que leia o `dc ps`): nenhum serviço `(unhealthy)`.
 - **Semanal:**
-  - `dc ps`: todos saudáveis;
+  - `dc ps` com todos saudáveis;
   - a pasta de backups tem um arquivo por dia;
   - a cópia externa está em dia.
 - **Mensal:** `docker system df` para ver o espaço em disco; apague imagens antigas com `docker image prune`, sem `-a`, para manter a versão anterior disponível para volta.

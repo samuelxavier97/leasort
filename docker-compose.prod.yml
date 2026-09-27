@@ -143,16 +143,18 @@ services:
       BACKUP_TIME: ${BACKUP_TIME:-03:00}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
       TZ: ${APP_TIMEZONE:-America/Sao_Paulo}
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-26}
     volumes:
       - backups:/backups
     depends_on:
       postgres:
         condition: service_healthy
+    # Saudável só com o crond rodando e um backup com menos de 26 h (com carência depois da subida).
     healthcheck:
-      test: ["CMD", "pgrep", "crond"]
-      interval: 1m
-      timeout: 5s
-      retries: 3
+      test: ["CMD", "backup-health.sh"]
+      interval: ${BACKUP_HEALTH_INTERVAL:-5m}
+      timeout: 10s
+      retries: 2
     mem_limit: 128m
     restart: unless-stopped
     networks: [internal]

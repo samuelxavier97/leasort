@@ -15,5 +15,7 @@ MINUTE="${TIME##*:}"
 env | grep -E '^(BACKUP_|PG|TZ=)' | sed "s/'/'\\\\''/g; s/=/='/; s/\$/'/; s/^/export /" >/etc/backup.env
 chmod 600 /etc/backup.env
 echo "$(expr "$MINUTE" + 0) $(expr "$HOUR" + 0) * * * . /etc/backup.env && /usr/local/bin/backup.sh >/proc/1/fd/1 2>/proc/1/fd/2" >/etc/crontabs/root
+# Marca da subida: a carência da verificação de saúde (health.sh) conta a partir daqui.
+date +%s >/run/backup-started
 echo "backup: agendado todos os dias às $TIME ($TZ); retenção de ${BACKUP_RETENTION_DAYS:-14} dias"
 exec crond -f -l 8
