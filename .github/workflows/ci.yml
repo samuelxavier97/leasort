@@ -1,8 +1,11 @@
 name: CI
 
 on:
+  # Só branches: a tag de versão roda os mesmos checks pelo workflow de release (D-112).
   push:
+    branches: ['**']
   pull_request:
+  workflow_call:
 
 jobs:
   verify:

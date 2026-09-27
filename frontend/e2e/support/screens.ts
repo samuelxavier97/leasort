@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test'
+import { recordSensitive } from './data.ts'
 
 export interface CompanionInput {
   name: string
@@ -44,7 +45,9 @@ export async function invitationCode(page: Page): Promise<string> {
   const code = page.getByTestId('invitation-code')
   await expect(code).toHaveText(/^[0-9A-Z]{5}-[0-9A-Z]{5}$/)
   await expect(page.getByRole('img', { name: 'QR Code do convite' })).toBeVisible()
-  return (await code.innerText()).replace('-', '')
+  const value = (await code.innerText()).replace('-', '')
+  recordSensitive(value)
+  return value
 }
 
 /**

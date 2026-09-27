@@ -18,8 +18,10 @@ DOMAIN=localhost
 HTTP_BASE="http://$DOMAIN:$HTTP_PORT"
 BASE="https://$DOMAIN:$HTTPS_PORT"
 NGINX_IP=172.30.250.10
-export BACKEND_IMAGE="${BACKEND_IMAGE:-resort-backend:check}"
-export NGINX_IMAGE="${NGINX_IMAGE:-resort-nginx:check}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-resort-backend:check}"
+NGINX_IMAGE="${NGINX_IMAGE:-resort-nginx:check}"
+# Sem export: o compose lê as imagens do .env.prod, como no servidor (o ensaio do runbook as troca lá).
+BACKUP_IMAGE="${BACKUP_IMAGE:-resort-backup:check}"
 # Nome fictício com aspas, < e &: precisa chegar intacto ao frontend sem virar marcação (D-087).
 RESORT_NAME_CHECK='Resort "Fictício" <b>Águas</b> & Sol'
 EXPECTED_CSP="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:; connect-src 'self'; font-src 'self'; media-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
@@ -35,6 +37,7 @@ if [ "${PROD_CHECK_SKIP_BUILD:-}" != "1" ]; then
   echo "==> Imagens"
   docker build -q -t "$BACKEND_IMAGE" "$ROOT/backend" >/dev/null
   docker build -q -t "$NGINX_IMAGE" -f "$ROOT/nginx/Dockerfile" "$ROOT" >/dev/null
+  docker build -q -t "$BACKUP_IMAGE" -f "$ROOT/backup/Dockerfile" "$ROOT" >/dev/null
 fi
 
 WORK="$(mktemp -d)"
@@ -44,9 +47,14 @@ ADMIN_EMAIL="admin@prod-check.local"
 BOOTSTRAP_PASSWORD="inicial-$(secret)"
 ADMIN_PASSWORD="admin-$(secret)"
 SUPERUSER_PASSWORD="$(secret)"
+# Par de chaves do age descartável: a pública vai para o .env; a privada fica só no WORK (D-110).
+docker run --rm "$BACKUP_IMAGE" age-keygen >"$WORK/backup.key" 2>/dev/null
+AGE_RECIPIENT="$(sed -n 's/^# public key: //p' "$WORK/backup.key")"
 cat >"$ENV_FILE" <<EOF
 BACKEND_IMAGE=$BACKEND_IMAGE
 NGINX_IMAGE=$NGINX_IMAGE
+BACKUP_IMAGE=$BACKUP_IMAGE
+BACKUP_AGE_RECIPIENT=$AGE_RECIPIENT
 DOMAIN=$DOMAIN
 HTTP_PORT=$HTTP_PORT
 HTTPS_PORT=$HTTPS_PORT
@@ -60,6 +68,7 @@ APP_BOOTSTRAP_ADMIN_EMAIL=$ADMIN_EMAIL
 APP_BOOTSTRAP_ADMIN_PASSWORD=$BOOTSTRAP_PASSWORD
 INTERNAL_SUBNET=172.30.250.0/24
 NGINX_INTERNAL_IP=$NGINX_IP
+BACKUP_HEALTH_INTERVAL=5s
 EOF
 # Valor com aspas no .env do compose: entre aspas simples, sem interpolação.
 printf "RESORT_NAME='%s'\n" "$RESORT_NAME_CHECK" >>"$ENV_FILE"
@@ -121,23 +130,26 @@ PY
 
 echo "==> Certificado local (CA descartável) e subida"
 "$ROOT/scripts/local-cert.sh" "$WORK/certs" "$DOMAIN" >/dev/null
-compose up --no-start >/dev/null 2>&1
 # O certificado vai para o volume letsencrypt no mesmo layout do Let's Encrypt (D-109).
-docker run --rm --user root --entrypoint sh -v "${PROJECT}_letsencrypt:/le" -v "$WORK/certs:/src:ro" "$NGINX_IMAGE" \
-  -c 'mkdir -p /le/live && cp -r /src/live/. /le/live/ && chmod -R a+rX /le'
-compose up -d >/dev/null 2>&1
-healthy=""
-for _ in $(seq 180); do
-  status="$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q nginx 2>/dev/null)" 2>/dev/null || true)"
-  if [ "$status" = "healthy" ]; then healthy=1; break; fi
-  sleep 1
-done
-if [ -z "$healthy" ]; then
+install_cert() {
+  compose up --no-start >/dev/null 2>&1
+  docker run --rm --user root --entrypoint sh -v "${PROJECT}_letsencrypt:/le" -v "$WORK/certs:/src:ro" "$NGINX_IMAGE" \
+    -c 'mkdir -p /le/live && cp -r /src/live/. /le/live/ && chmod -R a+rX /le'
+}
+wait_healthy() { # wait_healthy <serviço>: até 180 s
+  for _ in $(seq 180); do
+    status="$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q "$1" 2>/dev/null)" 2>/dev/null || true)"
+    if [ "$status" = "healthy" ]; then return 0; fi
+    sleep 1
+  done
   compose ps -a
   compose logs --tail 80
-  echo "prod-check: a pilha não ficou saudável em 180 s." >&2
-  exit 1
-fi
+  echo "prod-check: $1 não ficou saudável em 180 s." >&2
+  return 1
+}
+install_cert
+compose up -d >/dev/null 2>&1
+wait_healthy nginx || exit 1
 pass "pilha saudável (migrate concluído, backend pronto, nginx no ar)"
 check "migrate terminou com código 0" \
   test "$(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -a -q migrate)")" = "0"
@@ -146,7 +158,7 @@ check "o certificado da CA local vale para $DOMAIN (sem a CA, o curl recusa)" \
 
 if [ "${PROD_CHECK_E2E:-1}" != "0" ]; then
   echo "==> E2E contra a pilha por HTTPS"
-  if (cd "$ROOT/frontend" && E2E_BASE_URL="$BASE" E2E_ADMIN_EMAIL="$ADMIN_EMAIL" \
+  if (cd "$ROOT/frontend" && E2E_BASE_URL="$BASE" E2E_ADMIN_EMAIL="$ADMIN_EMAIL" E2E_SENSITIVE_FILE="$WORK/sensitive.txt" \
       E2E_BOOTSTRAP_PASSWORD="$BOOTSTRAP_PASSWORD" E2E_ADMIN_PASSWORD="$ADMIN_PASSWORD" \
       npx playwright test --reporter=line) >"$WORK/e2e.log" 2>&1; then
     pass "suíte E2E inteira por HTTPS, sem violação de CSP ($(grep -Eo '[0-9]+ passed' "$WORK/e2e.log" | tail -1))"
@@ -349,6 +361,210 @@ HEAP_MB="$(compose exec -T backend java -XX:+PrintFlagsFinal -version 2>/dev/nul
 check "heap máximo da JVM em 60% do limite de 768 MB (${HEAP_MB} MB)" test "$HEAP_MB" -ge 440 -a "$HEAP_MB" -le 470
 check "shared_buffers do PostgreSQL em 128MB" test "$(psql_q 'SHOW shared_buffers')" = "128MB"
 docker stats --no-stream --format '  uso  {{.Name}}: {{.MemUsage}}' $(compose ps -q)
+
+echo "==> Exportação chega aos poucos pelo Nginx (D-101, D-107)"
+# 100 mil Leads fictícios direto no banco (só na pilha descartável): a exportação passa de 20 MB.
+psql_q "INSERT INTO leads (id, name, phone, email, status)
+  SELECT gen_random_uuid(), 'Lead Volume ' || lpad(g::text, 6, '0') || ' ' || repeat('x', 90),
+         '(11) 90000-0000', 'volume' || g || '@e2e.local', 'NEW'
+  FROM generate_series(1, 100000) g" >/dev/null
+EXPORT_FILE="$WORK/export.csv"
+# Cliente lento (1 MB/s): com o Nginx sem buffer, o backend acompanha o ritmo do cliente.
+tls -b "$JAR" -c "$JAR" --limit-rate 1M -o "$EXPORT_FILE" \
+  -w '%{http_code} %{time_starttransfer} %{time_total} %{size_download}' "$BASE/api/exports/leads" >"$WORK/export.timing" &
+EXPORT_PID=$!
+sleep 6
+PARTIAL_BYTES="$(stat -c %s "$EXPORT_FILE" 2>/dev/null || echo 0)"
+STREAMING_TX="$(psql_q "SELECT count(*) FROM pg_stat_activity WHERE usename = 'resort_app'
+  AND state IN ('active', 'idle in transaction') AND xact_start IS NOT NULL AND query ILIKE '%FROM leads%'")"
+EXPORT_RUNNING=0
+kill -0 "$EXPORT_PID" 2>/dev/null && EXPORT_RUNNING=1
+wait "$EXPORT_PID" || true
+read -r EXPORT_STATUS FIRST_BYTE TOTAL_TIME TOTAL_BYTES <"$WORK/export.timing" || true  # a saída do -w não termina em \n
+check "aos 6 s o download ainda corre, com $PARTIAL_BYTES de $TOTAL_BYTES bytes recebidos" \
+  bash -c "[ '$EXPORT_RUNNING' = 1 ] && [ '$PARTIAL_BYTES' -gt 0 ] && [ '$PARTIAL_BYTES' -lt '$TOTAL_BYTES' ]"
+check "aos 6 s o backend ainda lê a exportação no banco (transação aberta: $STREAMING_TX)" test "$STREAMING_TX" -ge 1
+check "primeiro byte em ${FIRST_BYTE}s, fim em ${TOTAL_TIME}s ($EXPORT_STATUS, $TOTAL_BYTES bytes)" python3 -c "
+import sys
+status, first, total, size = '$EXPORT_STATUS', float('$FIRST_BYTE'), float('$TOTAL_TIME'), int('$TOTAL_BYTES')
+assert status == '200' and size > 15_000_000 and first < 3 and total > 12, (status, first, total, size)"
+psql_q "DELETE FROM leads WHERE email LIKE 'volume%@e2e.local'" >/dev/null
+
+echo "==> Logs sem CPF, código de convite nem senha (D-111)"
+CPF_CHECK="$(python3 -c "
+import random
+while True:
+    base = [random.randint(0, 9) for _ in range(9)]
+    if len(set(base)) > 1: break
+def digit(d):
+    r = sum(v * (len(d) + 1 - i) for i, v in enumerate(d)) * 10 % 11
+    return 0 if r == 10 else r
+base.append(digit(base)); base.append(digit(base))
+print(''.join(map(str, base)))")"
+echo "$CPF_CHECK" >>"$WORK/sensitive.txt"
+# CPF na query de propósito: o formato de log não grava a query (D-107).
+tls -b "$JAR" -c "$JAR" -o /dev/null "$BASE/api/leads?cpf=$CPF_CHECK&q=$CPF_CHECK"
+# Backend fora do ar: o log de erro do Nginx não pode gravar a linha do pedido com a query.
+compose stop backend >/dev/null 2>&1
+DOWN_STATUS="$(tls -m 90 -o /dev/null -w '%{http_code}' "$BASE/api/leads?cpf=$CPF_CHECK" || true)"
+check "com o backend parado, a API responde 502 ou 504 (recebido: $DOWN_STATUS)" bash -c "[ '$DOWN_STATUS' = 502 ] || [ '$DOWN_STATUS' = 504 ]"
+compose start backend >/dev/null 2>&1
+wait_healthy backend || exit 1
+compose logs --no-color --no-log-prefix >"$WORK/all.log" 2>&1
+printf '%s\n%s\n%s\n' "$BOOTSTRAP_PASSWORD" "$ADMIN_PASSWORD" "$SUPERUSER_PASSWORD" >>"$WORK/sensitive.txt"
+LEAKS="$(python3 - "$WORK/sensitive.txt" "$WORK/all.log" <<'PY'
+import sys
+values = {line.strip() for line in open(sys.argv[1]) if line.strip()}
+log = open(sys.argv[2], errors="replace").read()
+found = []
+for value in values:
+    variants = {value}
+    if len(value) == 11 and value.isdigit():
+        variants.add(f"{value[:3]}.{value[3:6]}.{value[6:9]}-{value[9:]}")
+    if len(value) == 10 and value.isalnum() and not value.isdigit():
+        variants.add(f"{value[:5]}-{value[5:]}")
+    found += [v for v in variants if v in log]
+print(len(values), " ".join(found))
+PY
+)"
+FOUND="$(echo "$LEAKS" | cut -s -d' ' -f2-)"
+check "nenhum dos $(echo "$LEAKS" | cut -d' ' -f1) valores sensíveis do teste (CPFs, códigos e senhas) aparece nos logs${FOUND:+ (encontrados: $FOUND)}" \
+  test -z "$FOUND"
+check "o log de acesso grava /api/leads sem a query" \
+  bash -c "grep -q '\"GET /api/leads HTTP' '$WORK/all.log' && ! grep -q 'GET /api/leads?' '$WORK/all.log'"
+
+echo "==> Backup cifrado e retenção (D-110)"
+LEAD_CPF="$(python3 -c "
+import random
+while True:
+    base = [random.randint(0, 9) for _ in range(9)]
+    if len(set(base)) > 1: break
+def digit(d):
+    r = sum(v * (len(d) + 1 - i) for i, v in enumerate(d)) * 10 % 11
+    return 0 if r == 10 else r
+base.append(digit(base)); base.append(digit(base))
+print(''.join(map(str, base)))")"
+check "Lead com CPF fictício para o backup" test "$(tls -b "$JAR" -c "$JAR" -o /dev/null -w '%{http_code}' \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $(xsrf)" \
+  --data "{\"name\":\"Lead do Backup\",\"cpf\":\"$LEAD_CPF\"}" "$BASE/api/leads")" = "201"
+CRON_LINE="$(compose exec -T backup cut -d' ' -f1-5 /etc/crontabs/root)"
+TZ_LINE="$(compose exec -T backup grep '^export TZ=' /etc/backup.env)"
+check "o backup roda às 03:00 no fuso da operação ($CRON_LINE; $TZ_LINE)" \
+  test "$CRON_LINE|$TZ_LINE" = "0 3 * * *|export TZ='America/Sao_Paulo'"
+# Saúde do backup pelo healthcheck do próprio Docker (intervalo de 5 s só nesta verificação).
+health_output() { docker inspect -f '{{range .State.Health.Log}}{{.Output}}{{end}}' "$(compose ps -q backup)" | grep . | tail -1; }
+# wait_health <healthy|unhealthy> <trecho da mensagem>: até 60 s, até o status do Docker e a mensagem da
+# checagem mais recente baterem (o status sozinho pode vir de uma checagem anterior à mudança).
+wait_health() {
+  for _ in $(seq 60); do
+    if [ "$(docker inspect -f '{{.State.Health.Status}}' "$(compose ps -q backup)")" = "$1" ] \
+      && health_output | grep -qF "$2"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+check "pilha recém-criada, sem backup: saudável pela carência" wait_health healthy "nenhum backup ainda; carência"
+# Subida há 27 h e nenhum backup: a carência acabou.
+compose exec -T backup sh -c 'echo $(( $(date +%s) - 27 * 3600 )) >/run/backup-started'
+check "sem backup 27 h depois da subida: unhealthy" wait_health unhealthy "nenhum backup em /backups após 26 h"
+compose exec -T backup sh -c 'date +%s >/run/backup-started'
+check "de volta à carência: saudável" wait_health healthy "nenhum backup ainda; carência"
+
+OLD="$(date -u -d '15 days ago' +%Y%m%d%H%M)"
+RECENT="$(date -u -d '13 days ago' +%Y%m%d%H%M)"
+compose exec -T backup sh -c "touch -t $OLD /backups/resort-19990101T000000Z.dump.age && touch -t $RECENT /backups/resort-19990102T000000Z.dump.age"
+# Estado do banco logo antes do backup, para comparar depois da restauração.
+db_state() {
+  psql_q "SELECT (SELECT count(*) FROM users) || '/' || (SELECT count(*) FROM leads) || '/' || (SELECT count(*) FROM visits)
+    || '/' || (SELECT count(*) FROM invitations) || '/' || (SELECT count(*) FROM access_records)
+    || '/' || (SELECT count(*) FROM audit_logs) || '/' || (SELECT md5(string_agg(id::text || action || coalesce(metadata::text, ''), ',' ORDER BY id)) FROM audit_logs)"
+}
+STATE_BEFORE="$(db_state)"
+BACKUP_LOG="$(compose exec -T backup backup.sh 2>&1)"
+BACKUP_NAME="$(echo "$BACKUP_LOG" | sed -n 's/^backup: \(resort-[0-9TZ]*\.dump\.age\).*/\1/p')"
+check "backup gerado ($BACKUP_NAME)" test -n "$BACKUP_NAME"
+check "retenção: arquivo com 15 dias apagado, com 13 dias mantido" bash -c \
+  "echo '$BACKUP_LOG' | grep -q 'apagado por retenção: /backups/resort-19990101T000000Z.dump.age' &&
+   ! echo '$BACKUP_LOG' | grep -q 'resort-19990102T000000Z'"
+docker cp "$(compose ps -q backup):/backups/$BACKUP_NAME" "$WORK/$BACKUP_NAME"
+check "com um backup recente: saudável" wait_health healthy "ok, último $BACKUP_NAME"
+# O último backup passa a ter 30 h: o backup parou de rodar.
+compose exec -T backup sh -c "touch -t $(date -u -d '30 hours ago' +%Y%m%d%H%M) /backups/$BACKUP_NAME"
+check "com o último backup de 30 h atrás: unhealthy" wait_health unhealthy "($BACKUP_NAME) tem mais de 26 h"
+# Um reinício do container não esconde o backup parado (a carência só vale sem nenhum backup).
+compose restart backup >/dev/null 2>&1
+check "depois de reiniciar o container, continua unhealthy" wait_health unhealthy "($BACKUP_NAME) tem mais de 26 h"
+compose exec -T backup sh -c "touch /backups/$BACKUP_NAME"
+check "com o backup em dia de novo: saudável" wait_health healthy "ok, último $BACKUP_NAME"
+check "o arquivo é cifrado com age" test "$(head -1 "$WORK/$BACKUP_NAME")" = "age-encryption.org/v1"
+check "sem a chave, o arquivo não é um dump legível (o pg_restore recusa)" bash -c \
+  "! docker run --rm -i '$BACKUP_IMAGE' pg_restore --list <'$WORK/$BACKUP_NAME' >/dev/null 2>&1"
+# O formato custom do pg_dump já comprime os dados; esta checagem sozinha não provaria a criptografia.
+check "o CPF do Lead não aparece no arquivo cifrado" bash -c "! grep -aq '$LEAD_CPF' '$WORK/$BACKUP_NAME'"
+check "decifrado com a chave, o dump traz o CPF (o teste anterior vale)" bash -c \
+  "docker run --rm -i -v '$WORK/backup.key:/k:ro' '$BACKUP_IMAGE' sh -c 'age -d -i /k | pg_restore -f -' <'$WORK/$BACKUP_NAME' 2>/dev/null | grep -c '$LEAD_CPF' >/dev/null"
+
+echo "==> Restauração (D-110)"
+docker run --rm "$BACKUP_IMAGE" age-keygen >"$WORK/other.key" 2>/dev/null
+if COMPOSE_PROJECT_NAME="$PROJECT" "$ROOT/scripts/restore.sh" "$ENV_FILE" "$WORK/$BACKUP_NAME" "$WORK/other.key" >"$WORK/restore-wrong.log" 2>&1; then
+  fail "restauração com a chave errada terminou com sucesso"
+else
+  check "com a chave errada, a restauração para com mensagem clara e não mexe no banco" bash -c \
+    "grep -q 'a chave informada não decifra este backup; nada foi alterado.' '$WORK/restore-wrong.log' &&
+     [ \"\$(docker inspect -f '{{.State.Health.Status}}' '$(compose ps -q backend)')\" = healthy ]"
+fi
+# Perda total da VPS: tudo é apagado; sobra só a cópia do backup fora do servidor (aqui, no WORK).
+compose down -v >/dev/null 2>&1
+install_cert
+compose up -d postgres >/dev/null 2>&1
+wait_healthy postgres || exit 1
+if COMPOSE_PROJECT_NAME="$PROJECT" "$ROOT/scripts/restore.sh" "$ENV_FILE" "$WORK/$BACKUP_NAME" "$WORK/backup.key" >"$WORK/restore.log" 2>&1; then
+  pass "restauração numa pilha nova, a partir da cópia do backup"
+else
+  cat "$WORK/restore.log"
+  fail "restauração numa pilha nova"
+fi
+wait_healthy nginx || exit 1
+STATE_RESTORED="$(db_state)"
+check "contagens por tabela e conteúdo de audit_logs iguais aos de antes do backup" test "$STATE_RESTORED" = "$STATE_BEFORE"
+JAR="$WORK/cookies-restored.txt"
+tls -c "$JAR" -o /dev/null "$BASE/api/auth/me"
+check "o ADMIN entra depois da restauração" test "$(tls -b "$JAR" -c "$JAR" -o /dev/null -w '%{http_code}' \
+  -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $(xsrf)" \
+  --data "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" "$BASE/api/auth/login")" = "200"
+check "depois da restauração, resort_app continua sem ownership" \
+  test "$(psql_q "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tableowner <> 'resort_owner'")" = "0"
+APP_PASSWORD_VALUE="$(sed -n 's/^DB_APP_PASSWORD=//p' "$ENV_FILE")"
+if docker run --rm --network "${PROJECT}_internal" -e PGPASSWORD="$APP_PASSWORD_VALUE" --entrypoint psql "$PG_IMAGE" \
+    -h postgres -U resort_app -d resort -tAc 'DELETE FROM audit_logs' >"$WORK/app-delete.log" 2>&1; then
+  fail "resort_app apagou audit_logs depois da restauração"
+else
+  check "depois da restauração, resort_app não apaga audit_logs" grep -q 'permission denied' "$WORK/app-delete.log"
+fi
+check "os triggers de audit_logs voltaram com o dump" \
+  test "$(psql_q "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'audit_logs'::regclass AND NOT tgisinternal AND tgenabled = 'O'")" = "2"
+
+echo "==> Ensaio do runbook: atualização de versão e rollback (docs/DEPLOY.md)"
+STATE_BEFORE_UPDATE="$(db_state)"
+docker tag "$BACKEND_IMAGE" resort-backend:ensaio-nova
+docker tag "$NGINX_IMAGE" resort-nginx:ensaio-nova
+sed -i -e 's|^BACKEND_IMAGE=.*|BACKEND_IMAGE=resort-backend:ensaio-nova|' -e 's|^NGINX_IMAGE=.*|NGINX_IMAGE=resort-nginx:ensaio-nova|' "$ENV_FILE"
+compose up -d >/dev/null 2>&1
+wait_healthy nginx || exit 1
+MIGRATE_IMAGE="$(docker inspect -f '{{.Config.Image}}' $(compose ps -a -q migrate) | sort -u | tr '\n' ' ')"
+BACKEND_RUNNING_IMAGE="$(docker inspect -f '{{.Config.Image}}' "$(compose ps -q backend)")"
+check "atualização: migrate e backend recriados com a versão nova (migrate: $MIGRATE_IMAGE; backend: $BACKEND_RUNNING_IMAGE)" \
+  test "$MIGRATE_IMAGE|$BACKEND_RUNNING_IMAGE" = "resort-backend:ensaio-nova |resort-backend:ensaio-nova"
+check "atualização: dados iguais aos de antes" test "$(db_state)" = "$STATE_BEFORE_UPDATE"
+sed -i -e "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=$BACKEND_IMAGE|" -e "s|^NGINX_IMAGE=.*|NGINX_IMAGE=$NGINX_IMAGE|" "$ENV_FILE"
+compose up -d >/dev/null 2>&1
+wait_healthy nginx || exit 1
+check "rollback: a versão anterior volta a rodar, com o health público no ar" bash -c \
+  "[ \"\$(docker inspect -f '{{.Config.Image}}' '$(compose ps -q backend)')\" = '$BACKEND_IMAGE' ] &&
+   [ \"\$(curl -s --cacert '$WORK/certs/ca.crt' '$BASE/actuator/health')\" = '{\"status\":\"UP\"}' ]"
+docker rmi resort-backend:ensaio-nova resort-nginx:ensaio-nova >/dev/null 2>&1 || true
 
 if [ "$FAILURES" -gt 0 ]; then
   echo "==> $FAILURES verificação(ões) falharam"
