@@ -288,7 +288,7 @@ login_fail() { # login_fail <e-mail> <X-Forwarded-For forjado>: status do login 
 login_fail "ip-$(secret)@prod-check.local" 203.0.113.9 >/dev/null
 AUDITED_IP="$(psql_q "SELECT ip_address FROM audit_logs WHERE action = 'LOGIN_FAILED' ORDER BY created_at DESC LIMIT 1")"
 SEEN_IP="$(compose logs --no-log-prefix nginx 2>/dev/null | grep '"POST /api/auth/login ' | tail -1 | awk '{ print $1 }')"
-check "a auditoria grava o IP que o Nginx viu ($SEEN_IP), não o forjado nem o do Nginx ($AUDITED_IP)" \
+check "a auditoria grava o IP que o Nginx viu, não o forjado nem o do Nginx (gravado: $AUDITED_IP; visto pelo Nginx: $SEEN_IP; Nginx: $NGINX_IP)" \
   bash -c "[ -n '$SEEN_IP' ] && [ '$AUDITED_IP' = '$SEEN_IP' ] && [ '$AUDITED_IP' != 203.0.113.9 ] && [ '$AUDITED_IP' != '$NGINX_IP' ]"
 LIMITED_EMAIL="limite-$(secret)@prod-check.local"
 STATUSES=""
