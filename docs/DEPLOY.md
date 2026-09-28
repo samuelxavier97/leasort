@@ -150,6 +150,11 @@ age-keygen -o resort-backup.key   # no computador do operador; instale o age (ht
    - Preencha tudo. Gere senhas com `openssl rand -base64 32`, uma diferente para cada variável.
    - `BACKEND_IMAGE`, `NGINX_IMAGE` e `BACKUP_IMAGE` recebem a tag da versão.
    - Comece com `LETSENCRYPT_STAGING=true`.
+   - **Marca do cliente** (opcional; sem ela, vale a do Resortric, D-115 e D-117):
+     - `RESORT_NAME` e `BRAND_COLOR` (`#RRGGBB`) no `.env.prod`;
+     - o logotipo em `/opt/resort/brand/logo.png` (`BRAND_DIR`), só PNG, até 256 KB e 2048 × 2048 px, feito para fundo branco. O diretório fica fora do Git (`.gitignore`).
+
+     Um valor inválido impede o Nginx de subir; o motivo aparece em `dc logs nginx`. Para trocar a marca depois, mude a variável ou o arquivo e rode `dc up -d --force-recreate nginx`, sem rebuild.
 3. **Subir:**
 
    ```bash

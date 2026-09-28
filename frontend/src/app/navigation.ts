@@ -54,3 +54,19 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
   ],
   HOST: [{ to: '/chegadas', label: 'Chegadas de hoje' }],
 }
+
+/** Telas fora do menu, pelo caminho; as do menu usam o rótulo do perfil. */
+const OTHER_SCREENS: [RegExp, string][] = [
+  [/^\/leads\/importar$/, 'Importar Leads'],
+  [/^\/leads\/[^/]+$/, 'Lead'],
+  [/^\/visitas\/[^/]+$/, 'Visita'],
+  [/^\/convites\/[^/]+$/, 'Convite'],
+  [/^\/chegadas\/[^/]+\/ficha$/, 'Ficha da visita'],
+  [/^\/trocar-senha$/, 'Trocar senha'],
+]
+
+/** Nome da tela para o título da aba (D-117). */
+export function screenTitle(pathname: string, role: Role): string | null {
+  const item = NAV_ITEMS[role].find((navItem) => navItem.to === pathname)
+  return item?.label ?? OTHER_SCREENS.find(([pattern]) => pattern.test(pathname))?.[1] ?? null
+}

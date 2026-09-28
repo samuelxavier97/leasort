@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { toast } from 'sonner'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Role } from '@/features/auth/types'
-import { RESORT_NAME } from '@/lib/resort'
+import { PRODUCT_NAME } from '@/lib/brand'
 import { fakeInvitation } from '@/test/invitationFixtures'
 import { page } from '@/test/leadFixtures'
 import { me, mockFetch, png, problem, renderApp, type Handler } from '@/test/utils'
@@ -223,7 +223,7 @@ describe('C4 — cancelar visita pelo convite', () => {
 describe('C5 a C7 — imagem de compartilhamento', () => {
   const invitation = fakeInvitation({ lead: { id: 'lead-1', name: 'Maria Fictícia', accessible: true } })
 
-  it('C5: a imagem traz só Resort, título, nome, data, código e instrução', async () => {
+  it('C5: a imagem traz só a identidade, título, nome, data, código e instrução', async () => {
     const downloads: string[] = []
     vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
       downloads.push(this.download)
@@ -237,7 +237,8 @@ describe('C5 a C7 — imagem de compartilhamento', () => {
 
     await waitFor(() => expect(downloads).toEqual([`convite-${invitation.formattedCode}.png`]))
     expect(drawnTexts).toEqual([
-      RESORT_NAME,
+      // Sem RESORT_NAME nem logotipo, a identidade é a do Resortric (D-117).
+      PRODUCT_NAME,
       'Convite de visita',
       'Maria Fictícia',
       'Visita em 30/09/2026',

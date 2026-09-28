@@ -1,9 +1,10 @@
 import { formatDate } from '@/lib/format'
-import { RESORT_NAME } from '@/lib/resort'
+import { brandName, currentBrand } from '@/lib/brand'
 import type { Invitation } from './api'
 
 /**
- * Imagem de compartilhamento do convite (§13), montada no frontend: nome do Resort, nome do Lead,
+ * Imagem de compartilhamento do convite (§13), montada no frontend: nome do Resort (RESORT_NAME ou, sem
+ * ele, Resortric, D-117), nome do Lead,
  * data, QR, código formatado e a instrução para a portaria. Nada de CPF, telefone, e-mail ou
  * acompanhantes (§15, RN08).
  */
@@ -26,7 +27,7 @@ export interface ShareImageContent {
 
 export function shareImageContent(invitation: Invitation): ShareImageContent {
   return {
-    resortName: RESORT_NAME,
+    resortName: brandName(currentBrand()),
     title: 'Convite de visita',
     leadName: invitation.lead.name,
     date: `Visita em ${formatDate(invitation.visit.scheduledDate)}`,

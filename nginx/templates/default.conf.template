@@ -100,6 +100,15 @@ server {
         try_files $uri =404;
     }
 
+    # Logotipo do cliente, validado e copiado na subida (D-115). CSP própria além da geral: o arquivo
+    # aberto direto no navegador não roda nada na origem do sistema (D-119). Pode mudar a cada subida.
+    location /brand/ {
+        include /etc/nginx/snippets/security-headers.conf;
+        add_header Content-Security-Policy "default-src 'none'; sandbox" always;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri =404;
+    }
+
     location = /index.html {
         include /etc/nginx/snippets/security-headers.conf;
         add_header Cache-Control "no-cache" always;

@@ -2,6 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 import type { Role } from '@/features/auth/types'
 import { me, mockFetch, renderApp } from '@/test/utils'
+import { screenTitle } from './navigation'
 
 const cases: { role: Role; landing: string; heading: string; links: string[] }[] = [
   {
@@ -146,5 +147,20 @@ describe('página inicial e menu por perfil', () => {
       expect(await screen.findByRole('heading', { name: heading, level: 1 })).toBeInTheDocument()
       unmount()
     }
+  })
+})
+
+describe('screenTitle — nome da tela no título da aba (D-117)', () => {
+  it('as telas do menu usam o rótulo do perfil; as demais, o nome pelo caminho', () => {
+    expect(screenTitle('/leads', 'ADMIN')).toBe('Leads')
+    expect(screenTitle('/leads', 'PROSPECTOR')).toBe('Meus Leads')
+    expect(screenTitle('/acessos', 'GATE')).toBe('Acessos Recentes')
+    expect(screenTitle('/chegadas', 'HOST')).toBe('Chegadas de hoje')
+    expect(screenTitle('/leads/importar', 'ADMIN')).toBe('Importar Leads')
+    expect(screenTitle('/leads/l-1', 'PROSPECTOR')).toBe('Lead')
+    expect(screenTitle('/visitas/v-1', 'ADMIN')).toBe('Visita')
+    expect(screenTitle('/convites/i-1', 'PROSPECTOR')).toBe('Convite')
+    expect(screenTitle('/chegadas/v-1/ficha', 'HOST')).toBe('Ficha da visita')
+    expect(screenTitle('/desconhecida', 'ADMIN')).toBeNull()
   })
 })

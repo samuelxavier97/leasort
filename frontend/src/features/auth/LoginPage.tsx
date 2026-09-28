@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { Navigate, useNavigate } from 'react-router'
 import { z } from 'zod'
 import { landingPath } from '@/app/navigation'
+import { useDocumentTitle } from '@/app/useDocumentTitle'
 import { FieldError } from '@/components/FieldError'
 import { FormAlert } from '@/components/FormAlert'
 import { Button } from '@/components/ui/button'
@@ -23,6 +24,7 @@ type LoginForm = z.infer<typeof schema>
 
 export function LoginPage() {
   const { data: me } = useMe()
+  useDocumentTitle('Entrar')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const {

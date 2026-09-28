@@ -10,4 +10,8 @@ afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   document.cookie = 'XSRF-TOKEN=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/'
+  // Tema do cliente (D-115) posto por um teste com setBrand.
+  document.head.querySelectorAll('meta[name^="resort-"]').forEach((meta) => meta.remove())
+  document.documentElement.removeAttribute('style')
+  document.title = ''
 })
