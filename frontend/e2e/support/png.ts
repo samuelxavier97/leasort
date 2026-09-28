@@ -66,8 +66,8 @@ export async function readPng(blankPage: Page, bytes: Buffer): Promise<PngConten
 /**
  * Lê o QR na imagem inteira como a câmera da Portaria poderia ver o celular: na orientação normal e,
  * se o detector falhar, girada 90°, 180° e 270°. O detector do @zxing/library 0.23 (o mesmo do scanner)
- * não acha os padrões de localização de cerca de 1,5% dos QRs corretos, inclusive dos PNGs do backend,
- * que o ZXing Java lê; girar a imagem contorna quase todos (medido: 1 em 3.000 continua sem leitura).
+ * não acha os padrões de localização de parte dos QRs corretos: 72 de 3.000 PNGs gerados como o backend
+ * gera; girar a imagem contorna 71 deles (D-123, docs/qr-teste-camera).
  * Não garante que nada na imagem atrapalhe a leitura só na orientação normal: um padrão parecido com o
  * de localização desenhado no logotipo também é contornado ao girar.
  */

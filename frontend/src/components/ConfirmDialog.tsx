@@ -14,6 +14,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   pending,
+  destructive,
   onConfirm,
   onCancel,
 }: {
@@ -22,6 +23,8 @@ export function ConfirmDialog({
   description: string
   confirmLabel: string
   pending?: boolean
+  /** Ação que desfaz ou encerra algo (D-122): o botão de confirmação sai em vermelho. */
+  destructive?: boolean
   onConfirm: () => void
   onCancel: () => void
 }) {
@@ -36,7 +39,7 @@ export function ConfirmDialog({
           <Button variant="outline" onClick={onCancel}>
             Cancelar
           </Button>
-          <Button onClick={onConfirm} disabled={pending}>
+          <Button variant={destructive ? 'destructive' : 'default'} onClick={onConfirm} disabled={pending}>
             {confirmLabel}
           </Button>
         </DialogFooter>

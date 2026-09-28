@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
+import { EmptyState, LoadError, PageLoading } from '@/components/PageState'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -167,10 +168,12 @@ export function LeadsPage() {
         </div>
       )}
 
-      {leads.isError && <p className="text-destructive">{errorMessage(leads.error)}</p>}
-      {leads.data && (
+      {leads.isPending && <PageLoading />}
+      {leads.isError && <LoadError error={leads.error} onRetry={() => leads.refetch()} />}
+      {leads.data && content.length === 0 && <EmptyState>Nenhum Lead encontrado.</EmptyState>}
+      {content.length > 0 && (
         <div className="overflow-x-auto rounded-md border bg-background">
-          <Table>
+          <Table className="table-cards">
             <TableHeader>
               <TableRow>
                 {isAdmin && (
@@ -193,17 +196,10 @@ export function LeadsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {content.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={isAdmin ? 6 : 4} className="text-muted-foreground">
-                    Nenhum Lead encontrado.
-                  </TableCell>
-                </TableRow>
-              )}
               {content.map((lead) => (
                 <TableRow key={lead.id}>
                   {isAdmin && (
-                    <TableCell>
+                    <TableCell data-label="Selecionar">
                       <input
                         type="checkbox"
                         aria-label={`Selecionar ${lead.name}`}
@@ -212,19 +208,19 @@ export function LeadsPage() {
                       />
                     </TableCell>
                   )}
-                  <TableCell>
+                  <TableCell data-label="Nome">
                     <Link className="font-medium hover:underline" to={`/leads/${lead.id}`}>
                       {lead.name}
                     </Link>
                   </TableCell>
-                  <TableCell>{lead.cpf ?? '—'}</TableCell>
-                  <TableCell>{lead.phone ?? '—'}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="CPF">{lead.cpf ?? '—'}</TableCell>
+                  <TableCell data-label="Telefone">{lead.phone ?? '—'}</TableCell>
+                  <TableCell data-label="Status">
                     <Badge variant={lead.status === 'CANCELLED' ? 'outline' : 'secondary'}>
                       {LEAD_STATUS_LABELS[lead.status]}
                     </Badge>
                   </TableCell>
-                  {isAdmin && <TableCell>{lead.prospector?.name ?? 'Não atribuído'}</TableCell>}
+                  {isAdmin && <TableCell data-label="Prospector">{lead.prospector?.name ?? 'Não atribuído'}</TableCell>}
                 </TableRow>
               ))}
             </TableBody>

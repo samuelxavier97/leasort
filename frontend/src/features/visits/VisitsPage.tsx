@@ -1,13 +1,13 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { EmptyState, LoadError, PageLoading } from '@/components/PageState'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { listProspectors } from '@/features/prospectors/api'
 import { operationToday } from '@/lib/date'
-import { errorMessage } from '@/lib/errors'
 import { formatDate } from '@/lib/format'
 import { listVisits, visitsQueryKey, type VisitFilters, type VisitStatus } from './api'
 import { VISIT_STATUS_LABELS } from './labels'
@@ -101,10 +101,12 @@ export function VisitsPage({ view }: { view: VisitsView }) {
         </div>
       )}
 
-      {visits.isError && <p className="text-destructive">{errorMessage(visits.error)}</p>}
-      {visits.data && (
+      {visits.isPending && <PageLoading />}
+      {visits.isError && <LoadError error={visits.error} onRetry={() => visits.refetch()} />}
+      {visits.data && content.length === 0 && <EmptyState>{EMPTY[view]}</EmptyState>}
+      {content.length > 0 && (
         <div className="overflow-x-auto rounded-md border bg-background">
-          <Table>
+          <Table className="table-cards">
             <TableHeader>
               <TableRow>
                 <TableHead>Data</TableHead>
@@ -115,28 +117,21 @@ export function VisitsPage({ view }: { view: VisitsView }) {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {content.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={showProspector ? 5 : 4} className="text-muted-foreground">
-                    {EMPTY[view]}
-                  </TableCell>
-                </TableRow>
-              )}
               {content.map((visit) => (
                 <TableRow key={visit.id}>
-                  <TableCell>
+                  <TableCell data-label="Data">
                     <Link className="font-medium hover:underline" to={`/visitas/${visit.id}`}>
                       {formatDate(visit.scheduledDate)}
                     </Link>
                   </TableCell>
-                  <TableCell>{visit.lead.name}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Lead">{visit.lead.name}</TableCell>
+                  <TableCell data-label="Status">
                     <Badge variant={visit.status === 'SCHEDULED' ? 'secondary' : 'outline'}>
                       {VISIT_STATUS_LABELS[visit.status]}
                     </Badge>
                   </TableCell>
-                  <TableCell>{visit.companions.length}</TableCell>
-                  {showProspector && <TableCell>{visit.prospector.name}</TableCell>}
+                  <TableCell data-label="Acompanhantes">{visit.companions.length}</TableCell>
+                  {showProspector && <TableCell data-label="Prospector">{visit.prospector.name}</TableCell>}
                 </TableRow>
               ))}
             </TableBody>

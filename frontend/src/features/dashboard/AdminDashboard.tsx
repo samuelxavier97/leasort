@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { PageLoading } from '@/components/PageState'
 import { FormAlert } from '@/components/FormAlert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -102,7 +103,7 @@ export function AdminDashboard() {
           </StatGrid>
         </>
       )}
-      {summary.isPending && <p className="text-muted-foreground">Carregando...</p>}
+      {summary.isPending && <PageLoading />}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {visits.data && <DayChart title="Visitas por dia" days={visits.data.days} series={VISIT_SERIES} />}

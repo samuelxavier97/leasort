@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
+import { LoadError, PageLoading } from '@/components/PageState'
 import { BrandIdentity } from '@/components/BrandIdentity'
 import { Button } from '@/components/ui/button'
 import { RELATIONSHIP_LABELS } from '@/features/visits/labels'
 import { formatOperationTime } from '@/lib/date'
-import { errorMessage } from '@/lib/errors'
 import { formatDate } from '@/lib/format'
 import { arrivalsQueryKey, getVisitSheet } from './api'
 import { formatAge } from './labels'
@@ -18,12 +18,12 @@ export function VisitSheetPage() {
   const sheet = useQuery({ queryKey: [...arrivalsQueryKey, 'sheet', visitId], queryFn: () => getVisitSheet(visitId) })
 
   if (sheet.isPending) {
-    return <p className="text-muted-foreground">Carregando...</p>
+    return <PageLoading />
   }
   if (sheet.isError) {
     return (
       <section className="max-w-2xl space-y-3">
-        <p className="text-destructive">{errorMessage(sheet.error)}</p>
+        <LoadError error={sheet.error} onRetry={() => sheet.refetch()} />
         <Button variant="outline" asChild>
           <Link to="/chegadas">Voltar às chegadas</Link>
         </Button>

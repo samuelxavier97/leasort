@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { LoadError, PageLoading } from '@/components/PageState'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { FormAlert } from '@/components/FormAlert'
 import { Badge } from '@/components/ui/badge'
@@ -46,12 +47,12 @@ export function LeadDetailPage() {
   })
 
   if (lead.isPending) {
-    return <p className="text-muted-foreground">Carregando...</p>
+    return <PageLoading />
   }
   if (lead.isError || !me) {
     return (
       <section className="space-y-3">
-        <p className="text-destructive">{errorMessage(lead.error)}</p>
+        <LoadError error={lead.error} onRetry={() => lead.refetch()} />
         <Link className="text-sm underline" to="/leads">
           Voltar para a lista
         </Link>
@@ -82,6 +83,7 @@ export function LeadDetailPage() {
           <Button
             key={action}
             variant={action === 'DISCARD' ? 'outline' : 'default'}
+            className={action === 'DISCARD' ? 'text-destructive hover:text-destructive' : undefined}
             disabled={statusChange.isPending}
             onClick={() => (action === 'DISCARD' ? setConfirmDiscard(true) : statusChange.mutate(action))}
           >
@@ -146,6 +148,7 @@ export function LeadDetailPage() {
         title="Descartar Lead"
         description={`${data.name} ficará inativo. Só o administrador pode reativá-lo.`}
         confirmLabel="Descartar"
+        destructive
         pending={statusChange.isPending}
         onConfirm={() => statusChange.mutate('DISCARD')}
         onCancel={() => setConfirmDiscard(false)}

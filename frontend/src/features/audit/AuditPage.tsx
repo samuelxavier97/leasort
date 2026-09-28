@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { EmptyState, PageLoading } from '@/components/PageState'
 import { FormAlert } from '@/components/FormAlert'
 import { Pagination } from '@/components/Pagination'
 import { Input } from '@/components/ui/input'
@@ -115,9 +116,9 @@ export function AuditPage() {
       />
 
       {audit.isPending ? (
-        <p className="text-muted-foreground">Carregando...</p>
+        <PageLoading />
       ) : audit.data && audit.data.content.length === 0 ? (
-        <p className="text-muted-foreground">Nenhum registro no período.</p>
+        <EmptyState>Nenhum registro no período.</EmptyState>
       ) : audit.data ? (
         <>
           <div className="rounded-md border bg-background">

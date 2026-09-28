@@ -67,7 +67,7 @@ export function ChangePasswordPage() {
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle>
-            <h1 className="text-xl">Trocar senha</h1>
+            <h1 className="text-2xl">Trocar senha</h1>
           </CardTitle>
           {me.mustChangePassword && (
             <CardDescription>Defina uma nova senha para continuar usando o sistema.</CardDescription>

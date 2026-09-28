@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { LoadError, PageLoading } from '@/components/PageState'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { FormAlert } from '@/components/FormAlert'
 import { Badge } from '@/components/ui/badge'
@@ -48,10 +49,10 @@ export function VisitDetailPage() {
   })
 
   if (visit.isPending) {
-    return <p className="text-muted-foreground">Carregando...</p>
+    return <PageLoading />
   }
   if (visit.isError || !me) {
-    return <p className="text-destructive">{errorMessage(visit.error)}</p>
+    return <LoadError error={visit.error} onRetry={() => visit.refetch()} />
   }
 
   const data = visit.data
@@ -104,7 +105,7 @@ export function VisitDetailPage() {
           <Button variant="outline" onClick={() => setRescheduling(true)}>
             Remarcar
           </Button>
-          <Button variant="outline" onClick={() => setConfirmCancel(true)} disabled={cancel.isPending}>
+          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmCancel(true)} disabled={cancel.isPending}>
             Cancelar visita
           </Button>
         </div>
@@ -201,6 +202,7 @@ export function VisitDetailPage() {
         title="Cancelar visita"
         description={`A visita de ${formatDate(data.scheduledDate)} será cancelada e o Lead volta para "Contatado".`}
         confirmLabel="Confirmar cancelamento"
+        destructive
         pending={cancel.isPending}
         onConfirm={() => cancel.mutate()}
         onCancel={() => setConfirmCancel(false)}

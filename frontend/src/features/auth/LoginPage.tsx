@@ -51,7 +51,7 @@ export function LoginPage() {
       <Card className="shadow-md">
         <CardHeader>
           <CardTitle>
-            <h1 className="text-xl">Entrar</h1>
+            <h1 className="text-2xl">Entrar</h1>
           </CardTitle>
           <CardDescription>Use o e-mail e a senha que você recebeu do administrador.</CardDescription>
         </CardHeader>

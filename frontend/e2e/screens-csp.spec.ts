@@ -40,6 +40,8 @@ test('E5: as telas de cada perfil abrem sem violar a Content-Security-Policy', a
   }
 
   const gate = await world.loggedIn('GATE', await world.createUser('GATE'))
-  await gate.getByRole('link', { name: 'Acessos Recentes' }).click()
+  // A Portaria usa o viewport do celular: o menu fica no botão Menu (D-122).
+  await gate.getByRole('button', { name: 'Menu' }).click()
+  await gate.getByRole('menuitem', { name: 'Acessos Recentes' }).click()
   await expect(gate.getByRole('heading', { level: 1 })).toBeVisible()
 })

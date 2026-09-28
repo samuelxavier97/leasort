@@ -1,11 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { EmptyState, LoadError, PageLoading } from '@/components/PageState'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/ui/badge'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { errorMessage } from '@/lib/errors'
 import { formatDate } from '@/lib/format'
 import { invitationsQueryKey, listInvitations, type InvitationFilters, type InvitationStatus } from './api'
 import { INVITATION_STATUS_LABELS } from './labels'
@@ -46,10 +46,12 @@ export function InvitationsPage() {
         </select>
       </div>
 
-      {invitations.isError && <p className="text-destructive">{errorMessage(invitations.error)}</p>}
-      {invitations.data && (
+      {invitations.isPending && <PageLoading />}
+      {invitations.isError && <LoadError error={invitations.error} onRetry={() => invitations.refetch()} />}
+      {invitations.data && content.length === 0 && <EmptyState>Nenhum convite encontrado.</EmptyState>}
+      {content.length > 0 && (
         <div className="overflow-x-auto rounded-md border bg-background">
-          <Table>
+          <Table className="table-cards">
             <TableHeader>
               <TableRow>
                 <TableHead>Data da visita</TableHead>
@@ -59,23 +61,16 @@ export function InvitationsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {content.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-muted-foreground">
-                    Nenhum convite encontrado.
-                  </TableCell>
-                </TableRow>
-              )}
               {content.map((invitation) => (
                 <TableRow key={invitation.id}>
-                  <TableCell>
+                  <TableCell data-label="Data da visita">
                     <Link className="font-medium hover:underline" to={`/convites/${invitation.id}`}>
                       {formatDate(invitation.visit.scheduledDate)}
                     </Link>
                   </TableCell>
-                  <TableCell>{invitation.lead.name}</TableCell>
-                  <TableCell className="font-mono">{invitation.formattedCode}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Lead">{invitation.lead.name}</TableCell>
+                  <TableCell data-label="Código" className="font-mono">{invitation.formattedCode}</TableCell>
+                  <TableCell data-label="Status">
                     <Badge variant={invitation.status === 'ACTIVE' ? 'secondary' : 'outline'}>
                       {INVITATION_STATUS_LABELS[invitation.status]}
                     </Badge>
