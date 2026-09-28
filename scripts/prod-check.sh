@@ -419,10 +419,14 @@ brand_case() { # brand_case <descrição> <conteúdo do diretório: vazio|svg|te
     svg) echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>' >"$dir/logo.svg" ;;
     texto) echo 'isto não é um PNG' >"$dir/logo.png" ;;
     assinatura) printf '\x89PNG\r\n\x1a\n' >"$dir/logo.png" ;;
+    sem-leitura) make_png "$dir/logo.png" 64 64 ;;
     *) local size="${content#*:}"; [ "$size" = "$content" ] && size=""
        make_png "$dir/logo.png" "${content%%x*}" "$(echo "${content%%:*}" | cut -dx -f2)" $size ;;
   esac
-  [ -e "$dir/logo.png" ] && chmod 644 "$dir/logo.png"
+  # Legível pelo uid 101 do Nginx, a não ser no caso que testa justamente o contrário.
+  if [ -e "$dir/logo.png" ]; then
+    if [ "$content" = sem-leitura ]; then chmod 600 "$dir/logo.png"; else chmod 644 "$dir/logo.png"; fi
+  fi
   local output
   output="$(brand_run "$dir" "$color")" && status=0 || status=$?
   if [ "$expected" = "ok" ]; then
@@ -441,6 +445,8 @@ done
 brand_case "logotipo SVG recusado (só PNG)" svg "" "só PNG"
 brand_case "arquivo de texto com nome logo.png recusado" texto "" "não é um PNG válido"
 brand_case "PNG só com a assinatura, sem IHDR, recusado" assinatura "" "não é um PNG válido"
+brand_case "PNG válido com modo 600 (ilegível pelo Nginx) recusado com mensagem clara" sem-leitura "" \
+  "logo.png sem permissão de leitura: use chmod 644"
 brand_case "PNG com 256 KB + 1 byte recusado" "64x64:262145" "" "o máximo é 262144"
 brand_case "PNG com exatamente 256 KB aceito" "64x64:262144" "" ok
 brand_case "PNG com 2049 px de largura recusado" "2049x1" "" "largura e altura vão de 1 a 2048"
