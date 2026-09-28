@@ -97,7 +97,10 @@ test('E6b: com o logotipo do cliente, o PNG do convite continua com o QR legíve
     const download = invitationPage.waitForEvent('download')
     await invitationPage.getByRole('button', { name: 'Baixar', exact: true }).click()
     const file = await download
-    await expectInvitationImage(page, await readFile((await file.path())!), file.suggestedFilename(), code)
+    const bytes = await readFile((await file.path())!)
+    await test.step(`logotipo ${logo === true ? 'comum' : logo}`, () =>
+      expectInvitationImage(page, bytes, file.suggestedFilename(), code),
+    )
     await context.close()
   }
 })

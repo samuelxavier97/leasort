@@ -1,8 +1,11 @@
 import type { Page } from '@playwright/test'
 // O pacote é CommonJS para o Node: os nomes vêm do objeto exportado.
 import zxing from '@zxing/library'
+// Só para o diagnóstico de uma falha: os candidatos a padrão de localização do QR (classe interna).
+import finderModule from '@zxing/library/cjs/core/qrcode/detector/FinderPatternFinder.js'
 
 const { BinaryBitmap, DecodeHintType, HybridBinarizer, QRCodeReader, RGBLuminanceSource } = zxing
+const FinderPatternFinder = finderModule.default
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -38,6 +41,42 @@ export async function readPng(blankPage: Page, bytes: Buffer): Promise<PngConten
 
   const source = new RGBLuminanceSource(Uint8ClampedArray.from(luminance), width, height)
   const hints = new Map([[DecodeHintType.TRY_HARDER, true]])
-  const qrText = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(source)), hints).getText()
-  return { width, height, qrText }
+  try {
+    const qrText = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(source)), hints).getText()
+    return { width, height, qrText }
+  } catch (error) {
+    throw new Error(`QR não lido na imagem inteira (${String(error)}). ${diagnose(source, hints)}`)
+  }
+}
+
+/**
+ * Diagnóstico de uma leitura que falhou: os candidatos a padrão de localização que o detector achou
+ * na imagem (posição, tamanho do módulo e quantas vezes foi confirmado) e se só a metade de baixo da
+ * imagem, onde fica o QR, é lida. Separa um QR danificado de uma interferência de fora dele.
+ */
+function diagnose(source: InstanceType<typeof RGBLuminanceSource>, hints: Map<zxing.DecodeHintType, unknown>): string {
+  // getPossibleCenters é protegido na tipagem, mas público no JavaScript.
+  const finder = new FinderPatternFinder(new HybridBinarizer(source).getBlackMatrix() as never, undefined as never) as unknown as {
+    find(hints: Map<zxing.DecodeHintType, unknown>): unknown
+    getPossibleCenters(): { getX(): number; getY(): number; getEstimatedModuleSize(): number; getCount(): number }[]
+  }
+  try {
+    finder.find(hints)
+  } catch {
+    // Os candidatos ficam guardados mesmo quando a busca falha.
+  }
+  const centers = finder
+    .getPossibleCenters()
+    .map((p) =>
+      `(${Math.round(p.getX())}, ${Math.round(p.getY())}) módulo ${p.getEstimatedModuleSize().toFixed(1)} vistas ${p.getCount()}`,
+    )
+  let lowerHalf: string
+  try {
+    const top = Math.floor(source.getHeight() / 3)
+    const crop = source.crop(0, top, source.getWidth(), source.getHeight() - top)
+    lowerHalf = `lido: ${new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(crop)), hints).getText()}`
+  } catch (error) {
+    lowerHalf = `também falhou (${String(error)})`
+  }
+  return `Candidatos: ${centers.join('; ') || 'nenhum'}. Só a parte de baixo (a partir de 1/3 da altura): ${lowerHalf}.`
 }
