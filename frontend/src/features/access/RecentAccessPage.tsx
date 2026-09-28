@@ -43,7 +43,8 @@ export function RecentAccessPage() {
                 <TableRow key={access.id}>
                   <TableCell>{formatOperationTime(access.createdAt)}</TableCell>
                   <TableCell>
-                    <Badge variant={access.result === 'AUTHORIZED' ? 'secondary' : 'destructive'}>
+                    {/* As mesmas cores fixas do resultado da Portaria (D-120). */}
+                    <Badge variant={access.result === 'AUTHORIZED' ? 'ok' : 'denied'}>
                       {ACCESS_RESULT_LABELS[access.result]}
                     </Badge>
                   </TableCell>

@@ -18,6 +18,8 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-hover: var(--primary-hover);
   --color-primary-edge: var(--primary-edge);
+  --color-status-ok: var(--status-ok);
+  --color-status-denied: var(--status-denied);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -37,6 +39,10 @@
   --series-3: #1baf7a;
   --series-4: #eda100;
   --chart-surface: #ffffff;
+  /* Resultado da Portaria (D-120): cores fixas, fora do tema do cliente, sempre com ícone e texto.
+     Texto branco: 5,02:1 no verde e 6,47:1 no vermelho. */
+  --status-ok: #15803d;
+  --status-denied: #b91c1c;
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

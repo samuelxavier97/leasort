@@ -6,18 +6,20 @@ import type { Role } from '@/features/auth/types'
 import { PRODUCT_NAME } from '@/lib/brand'
 import { fakeInvitation } from '@/test/invitationFixtures'
 import { page } from '@/test/leadFixtures'
-import { me, mockFetch, png, problem, renderApp, type Handler } from '@/test/utils'
+import { me, mockFetch, png, problem, renderApp, setBrand, type Handler } from '@/test/utils'
 import type { Invitation } from './api'
-import { SHARE_INSTRUCTION } from './shareImage'
+import { containRect, LOGO_BOX, SHARE_INSTRUCTION } from './shareImage'
 
 /** Canvas falso: registra todo texto desenhado, para conferir o conteúdo exato da imagem. */
 let drawnTexts: string[] = []
+let drawImage = vi.fn()
 
 beforeEach(() => {
   drawnTexts = []
+  drawImage = vi.fn()
   const context = {
     fillRect: vi.fn(),
-    drawImage: vi.fn(),
+    drawImage,
     measureText: () => ({ width: 100 }),
     fillText: (text: string) => drawnTexts.push(text),
   }
@@ -354,3 +356,78 @@ describe('C12 — erros em português', () => {
     expect(await screen.findByText('Convite não encontrado.')).toBeInTheDocument()
   })
 })
+
+describe('C12 — identidade na imagem do convite (D-117)', () => {
+  const invitation = fakeInvitation({ lead: { id: 'lead-1', name: 'Maria Fictícia', accessible: true } })
+  const RESORT = 'Resort Fictício das Águas'
+
+  /** Logotipo que "carrega" no jsdom com as dimensões dadas; decode falha se `fails`. */
+  function logoLoads(width: number, height: number, fails = false) {
+    // O jsdom não implementa decode(); os navegadores, sim.
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => (fails ? Promise.reject(new Error('404')) : Promise.resolve()),
+    })
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(width)
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(height)
+  }
+
+  async function download() {
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    mockInvitation('PROSPECTOR', invitation)
+    const user = userEvent.setup()
+    renderApp('/convites/i-1')
+    await screen.findByRole('img', { name: 'QR Code do convite' })
+    await user.click(screen.getByRole('button', { name: 'Baixar' }))
+    await waitFor(() => expect(drawnTexts).toContain(SHARE_INSTRUCTION))
+  }
+
+  afterEach(() => {
+    delete (HTMLImageElement.prototype as { decode?: unknown }).decode
+  })
+
+  const logoCall = () => drawImage.mock.calls.find(([image]) => image instanceof HTMLImageElement)
+
+  it('com logotipo: desenha o /brand/logo.png contido na caixa e não escreve o nome', async () => {
+    setBrand({ name: RESORT, logo: '/brand/logo.png' })
+    logoLoads(480, 120)
+    await download()
+
+    const [image, x, y, width, height] = logoCall()!
+    expect((image as HTMLImageElement).getAttribute('src')).toBe('/brand/logo.png')
+    // 480 × 120 escalado para 640 × 160 (altura da caixa), centralizado nos 720 px.
+    expect([x, y, width, height]).toEqual([220, 64, 640, 160])
+    expect(drawnTexts).not.toContain(RESORT)
+    expect(drawnTexts[0]).toBe('Convite de visita')
+  })
+
+  it('logotipo que não carrega: cai no nome em texto', async () => {
+    setBrand({ name: RESORT, logo: '/brand/logo.png' })
+    logoLoads(480, 120, true)
+    await download()
+
+    expect(logoCall()).toBeUndefined()
+    expect(drawnTexts[0]).toBe(RESORT)
+  })
+
+  it('só com RESORT_NAME: o nome em texto, nunca "Resortric"', async () => {
+    setBrand({ name: RESORT })
+    await download()
+
+    expect(logoCall()).toBeUndefined()
+    expect(drawnTexts[0]).toBe(RESORT)
+    expect(drawnTexts).not.toContain(PRODUCT_NAME)
+  })
+
+  it('logotipo muito largo ou muito alto cabe na caixa sem distorcer', () => {
+    const wide = containRect(2000, 100, LOGO_BOX)
+    expect(wide).toEqual({ x: 180, y: 126, width: 720, height: 36 })
+    const tall = containRect(100, 800, LOGO_BOX)
+    expect(tall).toEqual({ x: 530, y: 64, width: 20, height: 160 })
+    for (const rect of [wide, tall]) {
+      expect(rect.x).toBeGreaterThanOrEqual(LOGO_BOX.x)
+      expect(rect.y + rect.height).toBeLessThanOrEqual(LOGO_BOX.y + LOGO_BOX.height)
+    }
+  })
+})
+

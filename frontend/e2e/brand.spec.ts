@@ -73,3 +73,19 @@ test('E7d: cor clara (#f5d90a): texto preto no botão e item ativo do menu recon
   expect(active.borderWidth).toBe('2px')
   expect(contrast(active.border, 'rgb(255, 255, 255)')).toBeGreaterThanOrEqual(3)
 })
+
+test('E7e: login com o tema: o logotipo em destaque, a faixa na cor principal e o Resortric no rodapé', async ({ world }) => {
+  const context = await world.newContext('ADMIN')
+  await applyTheme(context, { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: true })
+  const page = await context.newPage()
+  await page.goto('/login')
+  await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible()
+  const logo = page.getByTestId('auth-identity').getByRole('img', { name: FICTIONAL_RESORT })
+  await expect.poll(() => logo.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(480)
+  await expect(page).toHaveTitle(`Entrar · ${FICTIONAL_RESORT}`)
+  await expect(page.getByRole('contentinfo').getByRole('img', { name: 'Resortric' })).toBeVisible()
+  const button = await colorsOf(page.getByRole('button', { name: 'Entrar' }))
+  expect(button.background).toBe('rgb(30, 58, 95)')
+  expect(contrast(button.background, button.color)).toBeGreaterThanOrEqual(4.5)
+})
+

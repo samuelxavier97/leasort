@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link, useParams } from 'react-router'
+import { BrandIdentity } from '@/components/BrandIdentity'
 import { Button } from '@/components/ui/button'
 import { RELATIONSHIP_LABELS } from '@/features/visits/labels'
 import { formatOperationTime } from '@/lib/date'
@@ -33,7 +34,13 @@ export function VisitSheetPage() {
   const data = sheet.data
   return (
     <article className="visit-sheet mx-auto max-w-2xl space-y-5 rounded-md border bg-background p-6 print:max-w-none print:space-y-3 print:rounded-none print:border-0 print:p-0">
-      <h1 className="text-2xl font-semibold print:text-xl">Ficha da visita — {formatDate(data.scheduledDate)}</h1>
+      {/* Identidade do cliente (D-117), com o logotipo limitado a 12 mm de altura na impressão. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <h1 className="text-2xl font-semibold print:text-xl">Ficha da visita — {formatDate(data.scheduledDate)}</h1>
+        <div className="shrink-0" data-testid="sheet-identity">
+          <BrandIdentity size="sheet" />
+        </div>
+      </div>
 
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-1">
         <dt className="text-muted-foreground">Lead</dt>

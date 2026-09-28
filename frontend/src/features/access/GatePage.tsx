@@ -1,4 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { CircleCheck, CircleX } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import { FormAlert } from '@/components/FormAlert'
@@ -23,7 +24,10 @@ type View =
 
 const BIG = 'h-16 w-full text-lg font-semibold'
 
-/** Portaria (§16.5): validar por QR ou código digitado, conferir e registrar a entrada. */
+/**
+ * Portaria (§16.5): validar por QR ou código digitado, conferir e registrar a entrada. O resultado usa
+ * cores fixas com ícone e texto, e os botões dessas telas não usam a cor do cliente (D-120).
+ */
 export function GatePage() {
   const queryClient = useQueryClient()
   const [view, setView] = useState<View>({ kind: 'start' })
@@ -98,7 +102,10 @@ export function GatePage() {
     const companions = access.companions ?? []
     return (
       <section className="mx-auto max-w-md space-y-4">
-        <h1 className="rounded-md bg-green-600 p-4 text-center text-2xl font-bold text-white">ACESSO LIBERADO</h1>
+        <h1 className="flex items-center justify-center gap-3 rounded-md bg-status-ok p-4 text-center text-2xl font-bold text-white">
+          <CircleCheck aria-hidden="true" className="size-8 shrink-0" />
+          ACESSO LIBERADO
+        </h1>
         <FormAlert message={register.error ? errorMessage(register.error) : null} />
         <Card>
           <CardContent className="space-y-4 pt-6">
@@ -137,6 +144,7 @@ export function GatePage() {
           </CardContent>
         </Card>
         <Button
+          variant="neutral"
           className={BIG}
           disabled={register.isPending}
           onClick={() =>
@@ -159,14 +167,17 @@ export function GatePage() {
   if (view.kind === 'denied') {
     return (
       <section className="mx-auto max-w-md space-y-4">
-        <h1 className="rounded-md bg-destructive p-4 text-center text-2xl font-bold text-white">ACESSO NEGADO</h1>
+        <h1 className="flex items-center justify-center gap-3 rounded-md bg-status-denied p-4 text-center text-2xl font-bold text-white">
+          <CircleX aria-hidden="true" className="size-8 shrink-0" />
+          ACESSO NEGADO
+        </h1>
         <Card>
           <CardContent className="space-y-2 pt-6">
             <p className="text-xl font-semibold">{DENIAL_REASON_LABELS[view.reason]}</p>
             <p>{denialMessage(view.reason, view.scheduledDate)}</p>
           </CardContent>
         </Card>
-        <Button className={BIG} onClick={restart}>
+        <Button variant="neutral" className={BIG} onClick={restart}>
           NOVA VALIDAÇÃO
         </Button>
       </section>

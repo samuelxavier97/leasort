@@ -1,14 +1,25 @@
 import { fileURLToPath } from 'node:url'
 import type { BrowserContext, Locator } from '@playwright/test'
 
-/** Logotipo fictício do tema de teste ("Resort Fictício das Águas"); nenhum logotipo real (D-114). */
-export const FICTIONAL_LOGO = fileURLToPath(new URL('../fixtures/brand/logo.png', import.meta.url))
+const fixture = (name: string) => fileURLToPath(new URL(`../fixtures/brand/${name}`, import.meta.url))
+
+/**
+ * Logotipos fictícios do tema de teste ("Resort Fictício das Águas"); nenhum logotipo real (D-114):
+ * o comum (480 × 120), um muito largo (1800 × 120) e um muito alto (220 × 800).
+ */
+export const FICTIONAL_LOGOS = {
+  default: fixture('logo.png'),
+  wide: fixture('logo-largo.png'),
+  tall: fixture('logo-alto.png'),
+}
+export const FICTIONAL_LOGO = FICTIONAL_LOGOS.default
 export const FICTIONAL_RESORT = 'Resort Fictício das Águas'
 
 export interface Theme {
   name: string
   color: string
-  logo: boolean
+  /** true é o logotipo comum. */
+  logo: boolean | keyof typeof FICTIONAL_LOGOS
 }
 
 const escapeHtml = (value: string) =>
@@ -21,7 +32,10 @@ const escapeHtml = (value: string) =>
  * CSP, são mantidos.
  */
 export async function applyTheme(context: BrowserContext, theme: Theme): Promise<void> {
-  await context.route('**/brand/logo.png', (route) => route.fulfill({ path: FICTIONAL_LOGO, contentType: 'image/png' }))
+  const logo = theme.logo === true ? 'default' : theme.logo
+  if (logo) {
+    await context.route('**/brand/logo.png', (route) => route.fulfill({ path: FICTIONAL_LOGOS[logo], contentType: 'image/png' }))
+  }
   await context.route('**/*', async (route) => {
     if (route.request().resourceType() !== 'document') return route.fallback()
     const response = await route.fetch()

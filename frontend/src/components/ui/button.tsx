@@ -10,6 +10,9 @@ const buttonVariants = cva(
       variant: {
         // Borda e hover da D-118: a cor clara não some no fundo branco, e o hover não derruba o contraste.
         default: "border border-primary-edge bg-primary text-primary-foreground hover:bg-primary-hover",
+        // Ação sem a cor do cliente (D-120): nas telas de resultado da Portaria, o botão não pode ser
+        // confundido com o verde ou o vermelho do resultado, qualquer que seja a cor principal.
+        neutral: "bg-foreground text-background hover:bg-foreground/85",
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         outline:
