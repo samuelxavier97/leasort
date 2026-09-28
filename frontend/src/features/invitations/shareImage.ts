@@ -56,6 +56,52 @@ export function containRect(width: number, height: number, box: typeof LOGO_BOX)
   return { x: box.x + (box.width - drawWidth) / 2, y: box.y + (box.height - drawHeight) / 2, width: drawWidth, height: drawHeight }
 }
 
+/**
+ * Módulos do QR (true = escuro), sem a margem, lidos do PNG da API. O PNG é desenhado em tamanho natural
+ * (1:1, sem reamostragem) num canvas à parte e amostrado no centro de cada módulo.
+ */
+export async function qrModules(qrPng: Blob): Promise<boolean[][]> {
+  const bitmap = await createImageBitmap(qrPng)
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  const context = canvas.getContext('2d', { willReadFrequently: true })
+  if (!context) {
+    throw new Error('Canvas indisponível.')
+  }
+  context.drawImage(bitmap, 0, 0)
+  return modulesFromPixels(context.getImageData(0, 0, bitmap.width, bitmap.height).data, bitmap.width)
+}
+
+/**
+ * Grade de módulos de um QR quadrado a partir dos pixels RGBA, sem supor a margem nem o tamanho do
+ * módulo (o ZXing do backend usa módulos de pixels inteiros e sobra na margem). Na primeira linha dos
+ * padrões de localização de cima, o do canto esquerdo tem 7 módulos escuros seguidos e o do canto
+ * direito termina na borda direita do QR.
+ */
+export function modulesFromPixels(data: Uint8ClampedArray, size: number): boolean[][] {
+  const dark = (x: number, y: number) => data[(y * size + x) * 4] < 128
+  let corner = 0
+  while (corner < size && !dark(corner, corner)) corner++
+  if (corner >= size) {
+    throw new Error('QR sem padrão de localização.')
+  }
+  let finderEnd = corner
+  while (finderEnd < size && dark(finderEnd, corner)) finderEnd++
+  let right = size - 1
+  while (right > finderEnd && !dark(right, corner)) right--
+  const module = (finderEnd - corner) / 7
+  const count = Math.round((right + 1 - corner) / module)
+  if (count < 21 || (count - 17) % 4 !== 0) {
+    throw new Error('QR sem padrão de localização.')
+  }
+  return Array.from({ length: count }, (_, row) =>
+    Array.from({ length: count }, (_, column) =>
+      dark(Math.floor(corner + (column + 0.5) * module), Math.floor(corner + (row + 0.5) * module)),
+    ),
+  )
+}
+
 /** O logotipo da própria origem (/brand/logo.png), por um <img> (D-119); falha vira null. */
 async function loadLogo(url: string): Promise<HTMLImageElement | null> {
   const image = new Image()
@@ -77,7 +123,7 @@ export async function renderShareImage(content: ShareImageContent, qrPng: Blob):
   if (!context) {
     throw new Error('Canvas indisponível.')
   }
-  const [qr, logo] = await Promise.all([createImageBitmap(qrPng), content.logoUrl ? loadLogo(content.logoUrl) : null])
+  const [modules, logo] = await Promise.all([qrModules(qrPng), content.logoUrl ? loadLogo(content.logoUrl) : null])
 
   context.fillStyle = '#ffffff'
   context.fillRect(0, 0, WIDTH, HEIGHT)
@@ -108,12 +154,20 @@ export async function renderShareImage(content: ShareImageContent, qrPng: Blob):
   text(content.title, 290, 40)
   text(content.leadName, 370, 52, 'bold')
   text(content.date, 430, 40)
-  // O QR vem da API com 512 px (módulos de 20,48 px) e é ampliado: sem suavização, cada módulo fica só
-  // preto ou branco, com bordas nítidas, qualquer que seja o filtro de reamostragem do navegador. Com
-  // suavização, as bordas interpoladas mudavam o tamanho de módulo que o leitor estima.
-  context.imageSmoothingEnabled = false
-  context.drawImage(qr, QR_BOX.x, QR_BOX.y, QR_BOX.width, QR_BOX.height)
-  context.imageSmoothingEnabled = true
+  // O QR é redesenhado módulo a módulo, em retângulos de coordenadas inteiras: sai igual em qualquer
+  // navegador, sem a reamostragem de ampliar o PNG da API (512 px, módulos de 20,48 px), que no CI
+  // chegou a danificar o QR (D-117).
+  // Margem de 2 módulos de cada lado, como a do PNG da API.
+  const moduleSize = Math.floor(QR_SIZE / (modules.length + 4))
+  const left = QR_BOX.x + Math.floor((QR_SIZE - moduleSize * modules.length) / 2)
+  const top = QR_BOX.y + Math.floor((QR_SIZE - moduleSize * modules.length) / 2)
+  context.fillStyle = '#000000'
+  modules.forEach((row, rowIndex) =>
+    row.forEach((isDark, columnIndex) => {
+      if (isDark) context.fillRect(left + columnIndex * moduleSize, top + rowIndex * moduleSize, moduleSize, moduleSize)
+    }),
+  )
+  context.fillStyle = '#111827'
   text(content.code, 1250, 88, 'bold', 'ui-monospace, monospace')
   text(content.instruction, 1335, 40)
 

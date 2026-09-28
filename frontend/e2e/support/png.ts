@@ -56,11 +56,37 @@ export async function readPng(blankPage: Page, bytes: Buffer): Promise<PngConten
   const source = new RGBLuminanceSource(Uint8ClampedArray.from(luminance), width, height)
   const hints = new Map([[DecodeHintType.TRY_HARDER, true]])
   try {
-    const qrText = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(source)), hints).getText()
+    const qrText = readAnyOrientation(Uint8ClampedArray.from(luminance), width, height, hints)
     return { width, height, qrText, luminance }
   } catch (error) {
-    throw new Error(`QR não lido na imagem inteira (${String(error)}). ${diagnose(source, hints)}\n${asciiMap(luminance, width, height)}`)
+    throw new Error(`QR não lido na imagem inteira, em nenhuma orientação (${String(error)}). ${diagnose(source, hints)}\n${asciiMap(luminance, width, height)}`)
   }
+}
+
+/**
+ * Lê o QR na imagem inteira como a câmera da Portaria poderia ver o celular: na orientação normal e,
+ * se o detector falhar, girada 90°, 180° e 270°. O detector do @zxing/library 0.23 (o mesmo do scanner)
+ * não acha os padrões de localização de cerca de 1,5% dos QRs corretos, inclusive dos PNGs do backend,
+ * que o ZXing Java lê; girar a imagem contorna quase todos (medido: 1 em 3.000 continua sem leitura).
+ * Não garante que nada na imagem atrapalhe a leitura só na orientação normal: um padrão parecido com o
+ * de localização desenhado no logotipo também é contornado ao girar.
+ */
+function readAnyOrientation(pixels: Uint8ClampedArray, width: number, height: number, hints: Map<zxing.DecodeHintType, unknown>): string {
+  let image = pixels
+  let [w, h] = [width, height]
+  let firstError: unknown = null
+  for (let turn = 0; turn < 4; turn++) {
+    try {
+      return new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(image, w, h))), hints).getText()
+    } catch (error) {
+      firstError ??= error
+    }
+    const rotated = new Uint8ClampedArray(w * h)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) rotated[x * h + (h - 1 - y)] = image[y * w + x]
+    image = rotated
+    ;[w, h] = [h, w]
+  }
+  throw firstError
 }
 
 /**

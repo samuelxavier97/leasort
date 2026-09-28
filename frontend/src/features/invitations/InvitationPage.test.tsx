@@ -8,18 +8,58 @@ import { fakeInvitation } from '@/test/invitationFixtures'
 import { page } from '@/test/leadFixtures'
 import { me, mockFetch, png, problem, renderApp, setBrand, type Handler } from '@/test/utils'
 import type { Invitation } from './api'
-import { containRect, LOGO_BOX, SHARE_INSTRUCTION } from './shareImage'
+import { containRect, LOGO_BOX, modulesFromPixels, SHARE_INSTRUCTION } from './shareImage'
 
 /** Canvas falso: registra todo texto desenhado, para conferir o conteúdo exato da imagem. */
 let drawnTexts: string[] = []
 let drawImage = vi.fn()
 
+/**
+ * Pixels RGBA de um QR sintético (sem margem na matriz) em `size` px. `zxing` imita o PNG do backend
+ * (QRCodeWriter): módulos de pixels inteiros para 4 módulos de margem e a sobra dividida nas bordas;
+ * sem ele, módulos fracionários (tamanho / (n + 4)).
+ */
+function qrPixels(matrix: boolean[][], size: number, zxing = true): Uint8ClampedArray {
+  const n = matrix.length
+  const module = zxing ? Math.floor(size / (n + 4)) : size / (n + 4)
+  const padding = zxing ? Math.floor((size - n * module) / 2) : 2 * module
+  const data = new Uint8ClampedArray(size * size * 4).fill(255)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const row = Math.floor((y - padding) / module)
+      const column = Math.floor((x - padding) / module)
+      if (row >= 0 && row < n && column >= 0 && column < n && matrix[row][column]) data.fill(0, (y * size + x) * 4, (y * size + x) * 4 + 3)
+    }
+  }
+  return data
+}
+
+/** QR versão 1 (21 × 21): os três padrões de localização e o resto preenchido de forma fixa. */
+function fakeQrMatrix(): boolean[][] {
+  const finder = (row: number, column: number, top: number, left: number) => {
+    const r = row - top
+    const c = column - left
+    if (r < 0 || r > 6 || c < 0 || c > 6) return null
+    return r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4)
+  }
+  return Array.from({ length: 21 }, (_, row) =>
+    Array.from({ length: 21 }, (_, column) => {
+      const pattern = finder(row, column, 0, 0) ?? finder(row, column, 0, 14) ?? finder(row, column, 14, 0)
+      if (pattern !== null) return pattern
+      if ((row <= 7 && column <= 7) || (row <= 7 && column >= 13) || (row >= 13 && column <= 7)) return false
+      return (row * 7 + column * 3) % 5 < 2
+    }),
+  )
+}
+
 beforeEach(() => {
   drawnTexts = []
   drawImage = vi.fn()
+  const QR_PNG_SIZE = 512
   const context = {
     fillRect: vi.fn(),
     drawImage,
+    getImageData: () => ({ data: qrPixels(fakeQrMatrix(), QR_PNG_SIZE) }),
     measureText: () => ({ width: 100 }),
     fillText: (text: string) => drawnTexts.push(text),
   }
@@ -27,7 +67,7 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (callback: BlobCallback) {
     callback(new Blob(['imagem'], { type: 'image/png' }))
   })
-  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({})))
+  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: QR_PNG_SIZE, height: QR_PNG_SIZE })))
 })
 
 afterEach(() => {
@@ -428,6 +468,24 @@ describe('C12 — identidade na imagem do convite (D-117)', () => {
       expect(rect.x).toBeGreaterThanOrEqual(LOGO_BOX.x)
       expect(rect.y + rect.height).toBeLessThanOrEqual(LOGO_BOX.y + LOGO_BOX.height)
     }
+  })
+})
+
+describe('C13 — QR redesenhado módulo a módulo', () => {
+  it('lê a grade exata do PNG da API (512 px: módulos de 20 px e 46 px de margem), sem a margem', () => {
+    const matrix = fakeQrMatrix()
+    expect(modulesFromPixels(qrPixels(matrix, 512), 512)).toEqual(matrix)
+  })
+
+  it('também com módulos fracionários (20,48 px) e outros tamanhos, sem supor a margem', () => {
+    const matrix = fakeQrMatrix()
+    expect(modulesFromPixels(qrPixels(matrix, 512, false), 512)).toEqual(matrix)
+    expect(modulesFromPixels(qrPixels(matrix, 250), 250)).toEqual(matrix)
+    expect(modulesFromPixels(qrPixels(matrix, 777, false), 777)).toEqual(matrix)
+  })
+
+  it('PNG sem padrão de localização é erro, não um QR vazio', () => {
+    expect(() => modulesFromPixels(new Uint8ClampedArray(64 * 64 * 4).fill(255), 64)).toThrow('QR sem padrão de localização.')
   })
 })
 
