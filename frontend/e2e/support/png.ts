@@ -1,8 +1,11 @@
 import type { Page } from '@playwright/test'
 // O pacote é CommonJS para o Node: os nomes vêm do objeto exportado.
 import zxing from '@zxing/library'
+// Só para o diagnóstico de uma falha: os candidatos a padrão de localização do QR (classe interna).
+import finderModule from '@zxing/library/cjs/core/qrcode/detector/FinderPatternFinder.js'
 
 const { BinaryBitmap, DecodeHintType, HybridBinarizer, QRCodeReader, RGBLuminanceSource } = zxing
+const FinderPatternFinder = finderModule.default
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]
 
@@ -11,6 +14,20 @@ export interface PngContent {
   height: number
   /** Texto do QR Code encontrado na imagem. */
   qrText: string
+  /** Luminância (0 a 255) de cada pixel, linha a linha. */
+  luminance: number[]
+}
+
+/** Pixels com tom intermediário (nem quase preto nem quase branco) dentro de uma área da imagem. */
+export function midTones(png: PngContent, box: { x: number; y: number; width: number; height: number }): number {
+  let count = 0
+  for (let y = box.y; y < box.y + box.height; y++) {
+    for (let x = box.x; x < box.x + box.width; x++) {
+      const value = png.luminance[y * png.width + x]
+      if (value > 40 && value < 215) count++
+    }
+  }
+  return count
 }
 
 /**
@@ -38,6 +55,93 @@ export async function readPng(blankPage: Page, bytes: Buffer): Promise<PngConten
 
   const source = new RGBLuminanceSource(Uint8ClampedArray.from(luminance), width, height)
   const hints = new Map([[DecodeHintType.TRY_HARDER, true]])
-  const qrText = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(source)), hints).getText()
-  return { width, height, qrText }
+  try {
+    const qrText = readAnyOrientation(Uint8ClampedArray.from(luminance), width, height, hints)
+    return { width, height, qrText, luminance }
+  } catch (error) {
+    throw new Error(`QR não lido na imagem inteira, em nenhuma orientação (${String(error)}). ${diagnose(source, hints)}\n${asciiMap(luminance, width, height)}`)
+  }
 }
+
+/**
+ * Lê o QR na imagem inteira como a câmera da Portaria poderia ver o celular: na orientação normal e,
+ * se o detector falhar, girada 90°, 180° e 270°. O detector do @zxing/library 0.23 (o mesmo do scanner)
+ * não acha os padrões de localização de cerca de 1,5% dos QRs corretos, inclusive dos PNGs do backend,
+ * que o ZXing Java lê; girar a imagem contorna quase todos (medido: 1 em 3.000 continua sem leitura).
+ * Não garante que nada na imagem atrapalhe a leitura só na orientação normal: um padrão parecido com o
+ * de localização desenhado no logotipo também é contornado ao girar.
+ */
+function readAnyOrientation(pixels: Uint8ClampedArray, width: number, height: number, hints: Map<zxing.DecodeHintType, unknown>): string {
+  let image = pixels
+  let [w, h] = [width, height]
+  let firstError: unknown = null
+  for (let turn = 0; turn < 4; turn++) {
+    try {
+      return new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(image, w, h))), hints).getText()
+    } catch (error) {
+      firstError ??= error
+    }
+    const rotated = new Uint8ClampedArray(w * h)
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) rotated[x * h + (h - 1 - y)] = image[y * w + x]
+    image = rotated
+    ;[w, h] = [h, w]
+  }
+  throw firstError
+}
+
+/**
+ * Diagnóstico de uma leitura que falhou: os candidatos a padrão de localização que o detector achou
+ * na imagem (posição, tamanho do módulo e quantas vezes foi confirmado) e se só a metade de baixo da
+ * imagem, onde fica o QR, é lida. Separa um QR danificado de uma interferência de fora dele.
+ */
+function diagnose(source: InstanceType<typeof RGBLuminanceSource>, hints: Map<zxing.DecodeHintType, unknown>): string {
+  // getPossibleCenters é protegido na tipagem, mas público no JavaScript.
+  const finder = new FinderPatternFinder(new HybridBinarizer(source).getBlackMatrix() as never, undefined as never) as unknown as {
+    find(hints: Map<zxing.DecodeHintType, unknown>): unknown
+    getPossibleCenters(): { getX(): number; getY(): number; getEstimatedModuleSize(): number; getCount(): number }[]
+  }
+  try {
+    finder.find(hints)
+  } catch {
+    // Os candidatos ficam guardados mesmo quando a busca falha.
+  }
+  const centers = finder
+    .getPossibleCenters()
+    .map((p) =>
+      `(${Math.round(p.getX())}, ${Math.round(p.getY())}) módulo ${p.getEstimatedModuleSize().toFixed(1)} vistas ${p.getCount()}`,
+    )
+  let lowerHalf: string
+  try {
+    const top = Math.floor(source.getHeight() / 3)
+    const crop = source.crop(0, top, source.getWidth(), source.getHeight() - top)
+    lowerHalf = `lido: ${new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(crop)), hints).getText()}`
+  } catch (error) {
+    lowerHalf = `também falhou (${String(error)})`
+  }
+  return `Candidatos: ${centers.join('; ') || 'nenhum'}. Só a parte de baixo (a partir de 1/3 da altura): ${lowerHalf}.`
+}
+
+/**
+ * A imagem em texto, para ver no log do CI o que o navegador desenhou: um mapa de células de 20 px
+ * (# escuro, + médio, . claro) e a grade de módulos da área do QR do convite (25 × 25, amostrada no
+ * centro de cada módulo).
+ */
+function asciiMap(luminance: number[], width: number, height: number): string {
+  const at = (x: number, y: number) => luminance[Math.min(height - 1, Math.round(y)) * width + Math.min(width - 1, Math.round(x))]
+  const shade = (value: number) => (value < 64 ? '#' : value < 128 ? '+' : value < 192 ? '.' : ' ')
+  const rows: string[] = ['Imagem (células de 20 px):']
+  for (let y = 10; y < height; y += 20) {
+    let row = ''
+    for (let x = 10; x < width; x += 20) row += shade(at(x, y))
+    rows.push(`|${row}|`)
+  }
+  rows.push('Módulos da área do QR (x 200, y 470, 680 px):')
+  const module = 680 / 25
+  for (let j = 0; j < 25; j++) {
+    let row = ''
+    for (let i = 0; i < 25; i++) row += shade(at(200 + (i + 0.5) * module, 470 + (j + 0.5) * module)) === '#' ? '##' : shade(at(200 + (i + 0.5) * module, 470 + (j + 0.5) * module)) === ' ' ? '  ' : '??'
+    rows.push(`|${row}|`)
+  }
+  return rows.join('\n')
+}
+

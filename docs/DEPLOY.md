@@ -153,6 +153,7 @@ age-keygen -o resort-backup.key   # no computador do operador; instale o age (ht
    - **Marca do cliente** (opcional; sem ela, vale a do Resortric, D-115 e D-117):
      - `RESORT_NAME` e `BRAND_COLOR` (`#RRGGBB`) no `.env.prod`;
      - o logotipo em `/opt/resort/brand/logo.png` (`BRAND_DIR`), só PNG, até 256 KB e 2048 × 2048 px, feito para fundo branco. O diretório fica fora do Git (`.gitignore`).
+     - o arquivo precisa ser legível pelo usuário do Nginx (uid 101): `chmod 644 /opt/resort/brand/logo.png`. Com modo 600, o Nginx não sobe e o log diz "logo.png sem permissão de leitura".
 
      Um valor inválido impede o Nginx de subir; o motivo aparece em `dc logs nginx`. Para trocar a marca depois, mude a variável ou o arquivo e rode `dc up -d --force-recreate nginx`, sem rebuild.
 3. **Subir:**

@@ -3,7 +3,8 @@ import type { Page } from '@playwright/test'
 import { fakeCpf, operationDate } from './support/data.ts'
 import { expect, login, test, type World } from './support/fixtures.ts'
 import { invitationCode } from './support/screens.ts'
-import { readPng } from './support/png.ts'
+import { applyTheme, FICTIONAL_RESORT } from './support/brand.ts'
+import { midTones, readPng } from './support/png.ts'
 
 /** Convite de hoje criado pela API; devolve o e-mail e a senha do Prospector e o id do convite. */
 async function invitation(world: World): Promise<{ prospector: { email: string; password: string }; id: string }> {
@@ -30,6 +31,9 @@ async function expectInvitationImage(blankPage: Page, bytes: Buffer, fileName: s
   const png = await readPng(blankPage, bytes)
   expect({ width: png.width, height: png.height }).toEqual({ width: 1080, height: 1440 })
   expect(png.qrText).toBe(`RSV:${code}`)
+  // O QR é desenhado sem suavização: módulos só pretos ou brancos, sem bordas interpoladas que mudem a
+  // leitura de um navegador para outro (achado no CI com o Chrome 153).
+  expect(midTones(png, { x: 200, y: 470, width: 680, height: 680 }), 'tons intermediários no QR').toBe(0)
 }
 
 /**
@@ -77,3 +81,30 @@ test('E6: Baixar e Compartilhar geram o PNG do convite com o código certo, sem 
   const shared = await sharingPage.evaluate(() => (window as unknown as { __shared: { name: string; base64: string }[] }).__shared[0])
   await expectInvitationImage(page, Buffer.from(shared.base64, 'base64'), shared.name, code)
 })
+
+/**
+ * E6b: com o logotipo do cliente (D-117), o canvas desenha o /brand/logo.png da própria origem sem
+ * ficar "sujo" (o toBlob funcionaria mal com uma imagem de outra origem), e o QR continua legível,
+ * também com o logotipo muito largo e o muito alto.
+ */
+test('E6b: com o logotipo do cliente, o PNG do convite continua com o QR legível', async ({ world, page }) => {
+  const { prospector, id } = await invitation(world)
+  for (const logo of [true, 'wide', 'tall'] as const) {
+    const context = await world.newContext('PROSPECTOR')
+    await applyTheme(context, { name: FICTIONAL_RESORT, color: '#1e3a5f', logo })
+    const invitationPage = await context.newPage()
+    await login(invitationPage, prospector.email, prospector.password)
+    await expect(invitationPage).toHaveURL('/dashboard')
+    await invitationPage.goto(`/convites/${id}`)
+    const code = await invitationCode(invitationPage)
+    const download = invitationPage.waitForEvent('download')
+    await invitationPage.getByRole('button', { name: 'Baixar', exact: true }).click()
+    const file = await download
+    const bytes = await readFile((await file.path())!)
+    await test.step(`logotipo ${logo === true ? 'comum' : logo}`, () =>
+      expectInvitationImage(page, bytes, file.suggestedFilename(), code),
+    )
+    await context.close()
+  }
+})
+

@@ -5,10 +5,11 @@ import { Navigate, useNavigate } from 'react-router'
 import { z } from 'zod'
 import { landingPath } from '@/app/navigation'
 import { useDocumentTitle } from '@/app/useDocumentTitle'
+import { AuthShell } from '@/components/AuthShell'
 import { FieldError } from '@/components/FieldError'
 import { FormAlert } from '@/components/FormAlert'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorMessage } from '@/lib/errors'
@@ -46,12 +47,13 @@ export function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
-      <Card className="w-full max-w-sm">
+    <AuthShell>
+      <Card className="shadow-md">
         <CardHeader>
           <CardTitle>
             <h1 className="text-xl">Entrar</h1>
           </CardTitle>
+          <CardDescription>Use o e-mail e a senha que você recebeu do administrador.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" noValidate onSubmit={handleSubmit((form) => mutation.mutate(form))}>
@@ -86,6 +88,6 @@ export function LoginPage() {
           </form>
         </CardContent>
       </Card>
-    </main>
+    </AuthShell>
   )
 }

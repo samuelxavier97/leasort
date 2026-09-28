@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import { me, mockFetch, problem, renderApp, setBrand, unauthenticated } from '@/test/utils'
@@ -78,5 +78,49 @@ describe('LoginPage', () => {
     renderApp('/login')
     await screen.findByRole('heading', { name: 'Entrar' })
     await waitFor(() => expect(document.title).toBe('Entrar · Resort Fictício das Águas'))
+  })
+
+  describe('identidade no login (D-117, D-121)', () => {
+    const RESORT = 'Resort Fictício das Águas'
+    async function identity() {
+      mockFetch((_method, url) => (url === '/api/auth/me' ? unauthenticated : undefined))
+      renderApp('/login')
+      await screen.findByRole('heading', { name: 'Entrar' })
+      return screen.getByTestId('auth-identity')
+    }
+
+    it('sem tema: o logotipo do Resortric em destaque', async () => {
+      const box = await identity()
+      expect(within(box).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
+    })
+
+    it('só com RESORT_NAME: o nome em texto, nunca "Resortric" no destaque', async () => {
+      setBrand({ name: RESORT })
+      const box = await identity()
+      expect(box).toHaveTextContent(RESORT)
+      expect(within(box).queryByRole('img')).not.toBeInTheDocument()
+    })
+
+    it('com nome e logotipo: só o logotipo, por <img>, com o nome no alt', async () => {
+      setBrand({ name: RESORT, logo: '/brand/logo.png' })
+      const box = await identity()
+      const image = within(box).getByRole('img')
+      expect(image).toHaveAttribute('src', '/brand/logo.png')
+      expect(image).toHaveAccessibleName(RESORT)
+      expect(box).not.toHaveTextContent(RESORT)
+      expect(box.querySelector('svg')).toBeNull()
+    })
+
+    it('só com o logotipo: alt "Logotipo do Resort"', async () => {
+      setBrand({ logo: '/brand/logo.png' })
+      const box = await identity()
+      expect(within(box).getByRole('img')).toHaveAccessibleName('Logotipo do Resort')
+    })
+
+    it('o rodapé traz o Resortric com qualquer tema', async () => {
+      setBrand({ name: RESORT, logo: '/brand/logo.png' })
+      await identity()
+      expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
+    })
   })
 })

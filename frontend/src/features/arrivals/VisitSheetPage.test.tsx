@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Role } from '@/features/auth/types'
 import { fakeSheet } from '@/test/arrivalFixtures'
-import { me, mockFetch, problem, renderApp, type MockResponse } from '@/test/utils'
+import { me, mockFetch, problem, renderApp, setBrand, type MockResponse } from '@/test/utils'
 import { formatAge } from './labels'
 
 function renderSheet(response: MockResponse, role: Role = 'HOST') {
@@ -104,3 +104,34 @@ describe('F8 — impressão', () => {
     expect(screen.getByRole('article').closest('.print\\:hidden')).toBeNull()
   })
 })
+
+describe('F9 — identidade na ficha (D-117)', () => {
+  const RESORT = 'Resort Fictício das Águas'
+
+  async function identity() {
+    renderSheet({ body: fakeSheet() })
+    await screen.findByRole('heading', { name: 'Ficha da visita — 24/09/2026' })
+    return screen.getByTestId('sheet-identity')
+  }
+
+  it('com nome e logotipo: o logotipo por <img>, limitado a 12 mm × 45 mm na impressão', async () => {
+    setBrand({ name: RESORT, logo: '/brand/logo.png' })
+    const image = within(await identity()).getByRole('img')
+    expect(image).toHaveAttribute('src', '/brand/logo.png')
+    expect(image).toHaveAccessibleName(RESORT)
+    expect(image).toHaveClass('print:h-[12mm]', 'print:max-w-[45mm]', 'object-contain')
+  })
+
+  it('só com RESORT_NAME: o nome em texto, nunca "Resortric"', async () => {
+    setBrand({ name: RESORT })
+    const box = await identity()
+    expect(box).toHaveTextContent(RESORT)
+    expect(within(box).queryByRole('img')).not.toBeInTheDocument()
+  })
+
+  it('sem tema: o logotipo do Resortric', async () => {
+    const box = await identity()
+    expect(within(box).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
+  })
+})
+

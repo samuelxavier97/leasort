@@ -917,6 +917,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - **Validação, que recusa a subida com mensagem clara:** cor fora de `#RRGGBB`; `logo.svg`, `logo.jpg`, `logo.jpeg` ou `logo.webp` no diretório; `logo.png` sem a assinatura PNG ou sem o bloco `IHDR` no início; largura ou altura fora de 1 a 2048 px; arquivo acima de 256 KB (262.144 bytes). Recusar, em vez de cair no padrão, evita apresentar a marca errada sem ninguém perceber.
   - **Frontend:** o `lib/brand.ts` (substitui o `lib/resort.ts`) lê as metas e valida de novo: cor fora do formato ou logotipo diferente de `/brand/logo.png` valem o padrão. As cores entram no `:root` por CSSOM (`style.setProperty`), no `main.tsx`, antes do primeiro render: sem `<style>` inline e sem piscar a cor padrão.
   - **Repositório:** `/brand/` no `.gitignore`, para um logotipo real nunca ser commitado. Os testes usam o tema fictício "Resort Fictício das Águas".
+  - **Complemento (Fase 12, PR 2, pedido na revisão):** `logo.png` que existe mas não pode ser lido pelo uid 101 do Nginx (por exemplo, do root com modo 600) também recusa a subida, com "logo.png sem permissão de leitura: use chmod 644", em vez do erro genérico do shell. Testado no `prod-check.sh`; o runbook pede `chmod 644`.
 - **Descartado:**
   - **Logotipo em SVG** (retirado na aprovação): o convite é desenhado em canvas no celular do Prospector, muitas vezes um iPhone, e o SVG no canvas só seria validado no Chromium; além disso, validar SVG por lista de proibições (`<script>`, `<foreignObject>`, `on…=`) é frágil. A CSP `sandbox` da rota `/brand/` (D-119) fica como proteção extra.
   - Endpoint e tabela no backend com upload: exigiria migration, tela e uma superfície de upload.
@@ -958,6 +959,9 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 
   A imagem do convite deixa de usar "Resort" como padrão: sem logotipo e sem nome, mostra "Resortric".
 - **Onde entra:** cabeçalho, título da aba e rodapé neste PR (Fase 12, PR 1); login, convite e ficha no PR 2.
+- **Complemento (Fase 12, PR 2):**
+  - **Imagem do convite:** faixa de 24 px na cor principal no topo, sem texto sobre ela; o logotipo é contido numa caixa de 720 × 160 px, centralizado e sem distorcer (um logotipo muito largo fica baixo, um muito alto fica estreito); sem logotipo, ou se ele não carregar, o nome em texto. O QR ocupa uma área de 680 px e é redesenhado módulo a módulo: os módulos são lidos do PNG da API em tamanho natural (1:1, sem reamostragem; o ZXing do backend usa módulos de 20 px inteiros e 46 px de margem) e desenhados como retângulos de 27 px em coordenadas inteiras, com 2 módulos de margem. O resultado é igual em qualquer navegador; ampliar o PNG com suavização deixava bordas interpoladas que dependiam do filtro de cada um (achado no CI do PR 2). O E6 confere a leitura com o logotipo comum, o muito largo e o muito alto, e que a área do QR não tem nenhum tom intermediário. A leitura no teste tenta a imagem na orientação normal e, se preciso, girada, porque o detector do `@zxing/library` 0.23 não acha os padrões de localização de cerca de 1,5% dos QRs corretos, inclusive dos PNGs do próprio backend (que o ZXing Java lê); o efeito disso na Portaria fica registrado à parte, para decisão.
+  - **Ficha:** a identidade fica à direita do título; o logotipo tem no máximo 12 mm de altura e 45 mm de largura na impressão. O E8 gera o PDF da impressão do Chromium no pior caso da D-097 (6 acompanhantes e 2.000 caracteres) e confere uma página A4 sem logotipo e com os três logotipos fictícios; a verificação manual da D-097 passa a ser automática.
 - **Cabeçalho:** continua branco, porque logotipos costumam ser feitos para fundo claro. A cor principal entra numa faixa de 4 px no topo, nos botões principais e no indicador do item ativo do menu. O item ativo tem também fundo e fonte em negrito (ajuste da aprovação), e a linha do indicador segue a regra de borda da D-118: com uma cor clara, ela fica escura, e o item continua reconhecível.
 
 ## D-118 — Contraste da cor principal
@@ -978,3 +982,19 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - A CSP geral não muda: `img-src 'self'` já cobre o arquivo.
   - A location `/brand/` do Nginx inclui os cabeçalhos de segurança de sempre e acrescenta uma CSP própria, `default-src 'none'; sandbox`, além de `Cache-Control: no-cache` (o arquivo pode mudar a cada subida) e 404 para o que não existe. Com o logotipo só em PNG, a `sandbox` é proteção extra: um arquivo aberto direto no navegador não roda nada na origem do sistema.
 - **Testes:** `prod-check.sh` confere tipo, `nosniff`, as duas CSPs e o `no-cache`; o E2E reprova qualquer violação de CSP com o logotipo na tela.
+
+## D-120 — O que não segue o tema do cliente
+
+- **Decisão:**
+  - **Resultado da Portaria:** cores fixas, fora do tema, sempre com ícone e texto: "ACESSO LIBERADO" em `#15803d` (texto branco, 5,02:1) com o ícone de confirmação, e "ACESSO NEGADO" em `#b91c1c` (6,47:1) com o ícone de negação. Antes, o liberado usava o `green-600` do Tailwind, com 3,22:1.
+  - **Botões das telas de resultado** ([CONFIRMAR ENTRADA] e [NOVA VALIDAÇÃO]): variante `neutral` (quase preto, texto branco), sem a cor do cliente. Uma cor principal verde ou vermelha não se confunde com o resultado; o E9 usa justamente o verde do liberado como cor do cliente. A tela inicial da Portaria continua com a cor do cliente.
+  - **Lista de Acessos:** "Liberado" e "Negado" com as mesmas cores fixas (variantes `ok` e `denied` do Badge). Antes, "Liberado" era o badge cinza.
+  - **Gráficos:** a paleta da D-100, sem mudança.
+  - **Erro e aviso:** `--destructive` e o âmbar dos avisos continuam fixos; a padronização em componentes fica para o PR 3 (D-122).
+- **Descartado:** medir a distância entre a cor do cliente e as de status, ou recusar cores parecidas: como as telas de resultado não usam a cor do cliente, não há o que medir.
+
+## D-121 — Tela de login
+
+- **Decisão:** o login e a troca de senha usam a mesma moldura (`AuthShell`): faixa de 4 px na cor principal no topo; a identidade do cliente em destaque, pela hierarquia da D-117 (logotipo com até 80 px de altura, o nome em texto grande ou o logotipo do Resortric), com "Gestão de visitas" abaixo; o cartão do formulário, com o título "Entrar" e uma linha de orientação; e o Resortric no rodapé, com qualquer tema. O fluxo, os campos e as mensagens de erro não mudam.
+- **Descartado:** tela dividida com painel colorido ao lado do formulário (o logotipo costuma ser feito para fundo claro, e a 390 px o painel empurraria o formulário para baixo); imagem de fundo (mais um arquivo de tema, fora do pedido).
+

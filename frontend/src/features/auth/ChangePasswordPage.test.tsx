@@ -1,7 +1,7 @@
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { me, mockFetch, problem, renderApp } from '@/test/utils'
+import { me, mockFetch, problem, renderApp, setBrand } from '@/test/utils'
 
 async function fill(current: string, next: string, confirm: string) {
   const user = userEvent.setup()
@@ -57,5 +57,15 @@ describe('ChangePasswordPage', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/portaria'))
     expect(body).toEqual({ currentPassword: 'senha-temporaria', newPassword: 'nova-senha-segura' })
+  })
+
+  it('usa a mesma moldura do login, com a identidade do cliente (D-121)', async () => {
+    setBrand({ name: 'Resort Fictício das Águas' })
+    mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me('GATE', { mustChangePassword: true }) } : undefined))
+    renderApp('/trocar-senha')
+
+    await screen.findByRole('heading', { name: 'Trocar senha' })
+    expect(screen.getByTestId('auth-identity')).toHaveTextContent('Resort Fictício das Águas')
+    expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toBeInTheDocument()
   })
 })

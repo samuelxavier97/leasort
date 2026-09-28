@@ -6,18 +6,60 @@ import type { Role } from '@/features/auth/types'
 import { PRODUCT_NAME } from '@/lib/brand'
 import { fakeInvitation } from '@/test/invitationFixtures'
 import { page } from '@/test/leadFixtures'
-import { me, mockFetch, png, problem, renderApp, type Handler } from '@/test/utils'
+import { me, mockFetch, png, problem, renderApp, setBrand, type Handler } from '@/test/utils'
 import type { Invitation } from './api'
-import { SHARE_INSTRUCTION } from './shareImage'
+import { containRect, LOGO_BOX, modulesFromPixels, SHARE_INSTRUCTION } from './shareImage'
 
 /** Canvas falso: registra todo texto desenhado, para conferir o conteúdo exato da imagem. */
 let drawnTexts: string[] = []
+let drawImage = vi.fn()
+
+/**
+ * Pixels RGBA de um QR sintético (sem margem na matriz) em `size` px. `zxing` imita o PNG do backend
+ * (QRCodeWriter): módulos de pixels inteiros para 4 módulos de margem e a sobra dividida nas bordas;
+ * sem ele, módulos fracionários (tamanho / (n + 4)).
+ */
+function qrPixels(matrix: boolean[][], size: number, zxing = true): Uint8ClampedArray {
+  const n = matrix.length
+  const module = zxing ? Math.floor(size / (n + 4)) : size / (n + 4)
+  const padding = zxing ? Math.floor((size - n * module) / 2) : 2 * module
+  const data = new Uint8ClampedArray(size * size * 4).fill(255)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const row = Math.floor((y - padding) / module)
+      const column = Math.floor((x - padding) / module)
+      if (row >= 0 && row < n && column >= 0 && column < n && matrix[row][column]) data.fill(0, (y * size + x) * 4, (y * size + x) * 4 + 3)
+    }
+  }
+  return data
+}
+
+/** QR versão 1 (21 × 21): os três padrões de localização e o resto preenchido de forma fixa. */
+function fakeQrMatrix(): boolean[][] {
+  const finder = (row: number, column: number, top: number, left: number) => {
+    const r = row - top
+    const c = column - left
+    if (r < 0 || r > 6 || c < 0 || c > 6) return null
+    return r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4)
+  }
+  return Array.from({ length: 21 }, (_, row) =>
+    Array.from({ length: 21 }, (_, column) => {
+      const pattern = finder(row, column, 0, 0) ?? finder(row, column, 0, 14) ?? finder(row, column, 14, 0)
+      if (pattern !== null) return pattern
+      if ((row <= 7 && column <= 7) || (row <= 7 && column >= 13) || (row >= 13 && column <= 7)) return false
+      return (row * 7 + column * 3) % 5 < 2
+    }),
+  )
+}
 
 beforeEach(() => {
   drawnTexts = []
+  drawImage = vi.fn()
+  const QR_PNG_SIZE = 512
   const context = {
     fillRect: vi.fn(),
-    drawImage: vi.fn(),
+    drawImage,
+    getImageData: () => ({ data: qrPixels(fakeQrMatrix(), QR_PNG_SIZE) }),
     measureText: () => ({ width: 100 }),
     fillText: (text: string) => drawnTexts.push(text),
   }
@@ -25,7 +67,7 @@ beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation(function (callback: BlobCallback) {
     callback(new Blob(['imagem'], { type: 'image/png' }))
   })
-  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({})))
+  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: QR_PNG_SIZE, height: QR_PNG_SIZE })))
 })
 
 afterEach(() => {
@@ -354,3 +396,96 @@ describe('C12 — erros em português', () => {
     expect(await screen.findByText('Convite não encontrado.')).toBeInTheDocument()
   })
 })
+
+describe('C12 — identidade na imagem do convite (D-117)', () => {
+  const invitation = fakeInvitation({ lead: { id: 'lead-1', name: 'Maria Fictícia', accessible: true } })
+  const RESORT = 'Resort Fictício das Águas'
+
+  /** Logotipo que "carrega" no jsdom com as dimensões dadas; decode falha se `fails`. */
+  function logoLoads(width: number, height: number, fails = false) {
+    // O jsdom não implementa decode(); os navegadores, sim.
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: () => (fails ? Promise.reject(new Error('404')) : Promise.resolve()),
+    })
+    vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(width)
+    vi.spyOn(HTMLImageElement.prototype, 'naturalHeight', 'get').mockReturnValue(height)
+  }
+
+  async function download() {
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    mockInvitation('PROSPECTOR', invitation)
+    const user = userEvent.setup()
+    renderApp('/convites/i-1')
+    await screen.findByRole('img', { name: 'QR Code do convite' })
+    await user.click(screen.getByRole('button', { name: 'Baixar' }))
+    await waitFor(() => expect(drawnTexts).toContain(SHARE_INSTRUCTION))
+  }
+
+  afterEach(() => {
+    delete (HTMLImageElement.prototype as { decode?: unknown }).decode
+  })
+
+  const logoCall = () => drawImage.mock.calls.find(([image]) => image instanceof HTMLImageElement)
+
+  it('com logotipo: desenha o /brand/logo.png contido na caixa e não escreve o nome', async () => {
+    setBrand({ name: RESORT, logo: '/brand/logo.png' })
+    logoLoads(480, 120)
+    await download()
+
+    const [image, x, y, width, height] = logoCall()!
+    expect((image as HTMLImageElement).getAttribute('src')).toBe('/brand/logo.png')
+    // 480 × 120 escalado para 640 × 160 (altura da caixa), centralizado nos 720 px.
+    expect([x, y, width, height]).toEqual([220, 64, 640, 160])
+    expect(drawnTexts).not.toContain(RESORT)
+    expect(drawnTexts[0]).toBe('Convite de visita')
+  })
+
+  it('logotipo que não carrega: cai no nome em texto', async () => {
+    setBrand({ name: RESORT, logo: '/brand/logo.png' })
+    logoLoads(480, 120, true)
+    await download()
+
+    expect(logoCall()).toBeUndefined()
+    expect(drawnTexts[0]).toBe(RESORT)
+  })
+
+  it('só com RESORT_NAME: o nome em texto, nunca "Resortric"', async () => {
+    setBrand({ name: RESORT })
+    await download()
+
+    expect(logoCall()).toBeUndefined()
+    expect(drawnTexts[0]).toBe(RESORT)
+    expect(drawnTexts).not.toContain(PRODUCT_NAME)
+  })
+
+  it('logotipo muito largo ou muito alto cabe na caixa sem distorcer', () => {
+    const wide = containRect(2000, 100, LOGO_BOX)
+    expect(wide).toEqual({ x: 180, y: 126, width: 720, height: 36 })
+    const tall = containRect(100, 800, LOGO_BOX)
+    expect(tall).toEqual({ x: 530, y: 64, width: 20, height: 160 })
+    for (const rect of [wide, tall]) {
+      expect(rect.x).toBeGreaterThanOrEqual(LOGO_BOX.x)
+      expect(rect.y + rect.height).toBeLessThanOrEqual(LOGO_BOX.y + LOGO_BOX.height)
+    }
+  })
+})
+
+describe('C13 — QR redesenhado módulo a módulo', () => {
+  it('lê a grade exata do PNG da API (512 px: módulos de 20 px e 46 px de margem), sem a margem', () => {
+    const matrix = fakeQrMatrix()
+    expect(modulesFromPixels(qrPixels(matrix, 512), 512)).toEqual(matrix)
+  })
+
+  it('também com módulos fracionários (20,48 px) e outros tamanhos, sem supor a margem', () => {
+    const matrix = fakeQrMatrix()
+    expect(modulesFromPixels(qrPixels(matrix, 512, false), 512)).toEqual(matrix)
+    expect(modulesFromPixels(qrPixels(matrix, 250), 250)).toEqual(matrix)
+    expect(modulesFromPixels(qrPixels(matrix, 777, false), 777)).toEqual(matrix)
+  })
+
+  it('PNG sem padrão de localização é erro, não um QR vazio', () => {
+    expect(() => modulesFromPixels(new Uint8ClampedArray(64 * 64 * 4).fill(255), 64)).toThrow('QR sem padrão de localização.')
+  })
+})
+

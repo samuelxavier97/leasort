@@ -189,6 +189,21 @@ describe('Portaria — liberado (P3)', () => {
     expect(registerRequests).toBe(1)
   })
 
+  it('D-120: faixa verde fixa com ícone e texto, e CONFIRMAR ENTRADA sem a cor do cliente', async () => {
+    const user = userEvent.setup()
+    renderGate({ body: fakeAuthorized() })
+
+    await validateTyped(user)
+
+    const heading = await screen.findByRole('heading', { name: 'ACESSO LIBERADO' })
+    expect(heading).toHaveClass('bg-status-ok', 'text-white')
+    expect(heading.className).not.toMatch(/primary/)
+    expect(heading.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    const confirm = screen.getByRole('button', { name: 'CONFIRMAR ENTRADA' })
+    expect(confirm).toHaveClass('bg-foreground')
+    expect(confirm.className).not.toMatch(/primary/)
+  })
+
   it('erro no registro fica na tela de liberado, com a mensagem', async () => {
     const user = userEvent.setup()
     renderGate({ body: fakeAuthorized() }, problem(400, 'COMPANION_NOT_FOUND'))
@@ -219,6 +234,21 @@ describe('Portaria — negado (P4)', () => {
     expect(await screen.findByRole('heading', { name: 'ACESSO NEGADO' })).toBeInTheDocument()
     expect(screen.getByText(title)).toBeInTheDocument()
     expect(screen.getByText(message)).toBeInTheDocument()
+  })
+
+  it('D-120: faixa vermelha fixa com ícone e texto, e NOVA VALIDAÇÃO sem a cor do cliente', async () => {
+    const user = userEvent.setup()
+    renderGate(denied('CANCELLED'))
+
+    await validateTyped(user)
+
+    const heading = await screen.findByRole('heading', { name: 'ACESSO NEGADO' })
+    expect(heading).toHaveClass('bg-status-denied', 'text-white')
+    expect(heading.className).not.toMatch(/primary|destructive/)
+    expect(heading.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
+    const again = screen.getByRole('button', { name: 'NOVA VALIDAÇÃO' })
+    expect(again).toHaveClass('bg-foreground')
+    expect(again.className).not.toMatch(/primary/)
   })
 
   it('"Nova validação" volta ao scanner', async () => {

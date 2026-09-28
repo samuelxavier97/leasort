@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import { z } from 'zod'
 import { landingPath } from '@/app/navigation'
 import { useDocumentTitle } from '@/app/useDocumentTitle'
+import { AuthShell } from '@/components/AuthShell'
 import { FieldError } from '@/components/FieldError'
 import { FormAlert } from '@/components/FormAlert'
 import { Button } from '@/components/ui/button'
@@ -62,8 +63,8 @@ export function ChangePasswordPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/40 p-4">
-      <Card className="w-full max-w-sm">
+    <AuthShell>
+      <Card className="shadow-md">
         <CardHeader>
           <CardTitle>
             <h1 className="text-xl">Trocar senha</h1>
@@ -122,6 +123,6 @@ export function ChangePasswordPage() {
           </form>
         </CardContent>
       </Card>
-    </main>
+    </AuthShell>
   )
 }

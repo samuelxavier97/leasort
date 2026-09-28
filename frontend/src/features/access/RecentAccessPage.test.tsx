@@ -47,6 +47,18 @@ describe('Acessos recentes', () => {
     ])
   })
 
+  it('D-120: Liberado e Negado com as cores fixas da Portaria, sem a cor do cliente', async () => {
+    renderRecent([fakeRecent({ id: 'a-2' }), fakeRecent({ id: 'a-1', result: 'DENIED', denialReason: 'CANCELLED' })])
+
+    const table = await screen.findByRole('table')
+    const authorized = within(table).getByText('Liberado')
+    const denied = within(table).getByText('Negado')
+    expect(authorized).toHaveClass('bg-status-ok', 'text-white')
+    expect(denied).toHaveClass('bg-status-denied', 'text-white')
+    expect(authorized.className).not.toMatch(/primary|secondary/)
+    expect(denied.className).not.toMatch(/primary|bg-destructive/)
+  })
+
   it('sem acessos hoje, avisa', async () => {
     renderRecent([])
 

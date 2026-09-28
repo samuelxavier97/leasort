@@ -42,6 +42,8 @@ done
 file="$SOURCE_DIR/logo.png"
 if [ -e "$file" ]; then
   [ -f "$file" ] || fail "logo.png não é um arquivo"
+  # O Nginx roda como uid 101: um arquivo do root com modo 600 existe, mas não pode ser lido.
+  [ -r "$file" ] || fail "logo.png sem permissão de leitura: use chmod 644"
   size=$(wc -c <"$file" | tr -d ' ')
   [ "$size" -le "$MAX_BYTES" ] || fail "logo.png tem $size bytes; o máximo é $MAX_BYTES (256 KB)"
   # Assinatura PNG (8 bytes), tamanho do bloco IHDR (13), "IHDR", largura e altura (4 bytes cada).
