@@ -22,6 +22,7 @@ Sistema web de gestão de Leads, visitas, acompanhantes, convites e controle de 
 10. Não inventar integrações externas. Não usar dados fictícios fora do perfil `dev`.
 11. Toda funcionalidade crítica tem teste. Não declarar tarefa concluída sem build e testes passando.
 12. Preservar funcionalidades existentes. Não remover código sem justificar e testar o impacto.
+13. Comando destrutivo só com autorização explícita do Samuel, mesmo em ambiente de desenvolvimento e mesmo em recurso criado pela própria sessão. Exemplos: apagar volume, container, branch ou arquivo fora do escopo, `down -v`, `reset`, `push --force`.
 
 ## Stack
 
