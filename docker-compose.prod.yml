@@ -104,6 +104,8 @@ services:
     image: ${NGINX_IMAGE:?defina NGINX_IMAGE}
     environment:
       RESORT_NAME: ${RESORT_NAME:-}
+      # Tema do cliente (D-115): cor #RRGGBB e logo.png em BRAND_DIR; vazios valem o do Resortric.
+      BRAND_COLOR: ${BRAND_COLOR:-}
       DOMAIN: ${DOMAIN:?defina DOMAIN}
       PUBLIC_HTTPS_PORT: ${HTTPS_PORT:-443}
       HSTS_MAX_AGE: ${HSTS_MAX_AGE:-31536000}
@@ -116,6 +118,7 @@ services:
     volumes:
       - letsencrypt:/etc/letsencrypt:ro
       - acme-webroot:/var/www/acme:ro
+      - ${BRAND_DIR:-./brand}:/etc/resort/brand:ro
     depends_on:
       backend:
         condition: service_healthy

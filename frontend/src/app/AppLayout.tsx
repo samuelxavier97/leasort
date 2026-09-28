@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown } from 'lucide-react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
+import { BrandIdentity } from '@/components/BrandIdentity'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -12,13 +13,17 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { logout, meQueryKey } from '@/features/auth/api'
 import { useMe } from '@/features/auth/useMe'
+import { PRODUCT_LOGO_URL, PRODUCT_NAME } from '@/lib/brand'
 import { cn } from '@/lib/utils'
-import { NAV_ITEMS, ROLE_LABELS } from './navigation'
+import { NAV_ITEMS, ROLE_LABELS, screenTitle } from './navigation'
+import { useDocumentTitle } from './useDocumentTitle'
 
 export function AppLayout() {
   const { data: me } = useMe()
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const location = useLocation()
+  useDocumentTitle(me ? screenTitle(location.pathname, me.role) : null)
   const logoutMutation = useMutation({
     mutationFn: logout,
     onSettled: () => {
@@ -33,19 +38,25 @@ export function AppLayout() {
   }
 
   return (
-    <div className="min-h-svh bg-muted/40 print:min-h-0 print:bg-white">
+    <div className="flex min-h-svh flex-col bg-muted/40 print:block print:min-h-0 print:bg-white">
+      {/* Faixa na cor principal do cliente (D-117); o cabeçalho continua branco, para o logotipo. */}
+      <div aria-hidden="true" className="h-1 bg-primary print:hidden" />
       <header className="border-b bg-background print:hidden">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-          <span className="font-semibold">Gestão de Visitas</span>
+          <Link to="/" className="flex shrink-0 items-center">
+            <BrandIdentity />
+          </Link>
           <nav aria-label="Menu principal" className="flex flex-1 flex-wrap gap-1">
             {NAV_ITEMS[me.role].map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
+                // Item ativo: fundo, negrito e a linha na cor de borda da D-118, para não depender só da
+                // cor principal (uma cor clara some no branco).
                 className={({ isActive }) =>
                   cn(
-                    'rounded-md px-3 py-2 text-sm hover:bg-muted',
-                    isActive && 'bg-muted font-medium text-foreground',
+                    'rounded-t-md border-b-2 border-transparent px-3 py-2 text-sm hover:bg-muted',
+                    isActive && 'border-primary-edge bg-muted font-semibold text-foreground',
                   )
                 }
               >
@@ -74,9 +85,12 @@ export function AppLayout() {
           </DropdownMenu>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-6 print:max-w-none print:p-0">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 print:max-w-none print:p-0">
         <Outlet />
       </main>
+      <footer className="flex justify-center px-4 py-4 print:hidden">
+        <img src={PRODUCT_LOGO_URL} alt={PRODUCT_NAME} className="h-4 w-auto opacity-70" />
+      </footer>
     </div>
   )
 }

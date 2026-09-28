@@ -57,7 +57,9 @@ describe('E1 — dashboard como tela inicial', () => {
     const { router } = renderDashboard(role)
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/dashboard'))
-    expect(await screen.findByRole('heading', { name: 'Dashboard' })).toBeInTheDocument()
+    // O título da tela de carregamento é trocado pelo da tela com dados: o elemento achado primeiro pode
+    // sair do documento antes da asserção. Espera o título que está na tela.
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument())
   })
 
   it.each([

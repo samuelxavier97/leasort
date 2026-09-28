@@ -896,3 +896,85 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Impacto:**
   - Nenhum na aplicação nem no banco de produção.
   - No dev, a troca de volume acontece uma única vez: o banco nasce vazio na primeira subida depois da atualização. Dali em diante, renomear a pasta não muda mais o volume.
+
+## D-114 — Fase 12: acabamento visual e tema por cliente
+
+- **Contexto:** a primeira apresentação ao gerente comercial do Resort precisa de acabamento visual e da marca do cliente na tela. A 11b (deploy real) depende do que sair dessa reunião.
+- **Decisão:** escopo novo, definido pelo Samuel, registrado como Fase 12 na §25 da SPEC.
+  - **Ordem:** a 12 roda antes da 11b. A 11a está concluída (v0.1.1); a 11b fica suspensa até o fim da 12.
+  - **Escopo:** tema por cliente injetado na subida (cor principal e logotipo), identidade padrão do Resortric, onde cada marca aparece, contraste, o que não segue o tema, tela de login redesenhada e consistência entre telas.
+  - **Entrega:** três PRs (mecanismo e identidade; marca nas telas; consistência e reconferência) e a tag `v0.2.0` ao fim da fase.
+- **Fora da fase:** tela de configuração ou upload do tema pelo sistema, modo escuro, tema por usuário ou por unidade (múltiplas unidades estão na §28). É um tema por instalação.
+- **Impacto:** nenhuma mudança no backend nem no banco.
+
+## D-115 — Tema por cliente injetado na subida
+
+- **Contexto:** a mesma imagem precisa servir a qualquer cliente (D-087). O nome já vem de `RESORT_NAME`; faltam a cor principal e o logotipo.
+- **Decisão (amplia a D-087 e a D-107, confirmado):**
+  - **Cor:** `BRAND_COLOR` no `.env.prod`, só no formato `#RRGGBB`. Vazia vale a cor padrão do Resortric (D-116).
+  - **Logotipo:** só PNG, em `logo.png` no diretório `BRAND_DIR` do servidor (padrão `./brand`, ao lado do compose), montado só leitura em `/etc/resort/brand` no Nginx. Sem o arquivo, não há logotipo.
+  - **Subida:** o `nginx/41-resort-brand.sh` roda depois do `40-resort-name.sh` (que não muda), valida, copia o PNG validado para `/usr/share/nginx/html/brand/logo.png` (a cópia anterior é apagada antes) e preenche no `index.html` as metas `resort-brand-color` e `resort-brand-logo` (`/brand/logo.png`). Trocar a cor ou o arquivo e reiniciar o container basta, sem rebuild.
+  - **Validação, que recusa a subida com mensagem clara:** cor fora de `#RRGGBB`; `logo.svg`, `logo.jpg`, `logo.jpeg` ou `logo.webp` no diretório; `logo.png` sem a assinatura PNG ou sem o bloco `IHDR` no início; largura ou altura fora de 1 a 2048 px; arquivo acima de 256 KB (262.144 bytes). Recusar, em vez de cair no padrão, evita apresentar a marca errada sem ninguém perceber.
+  - **Frontend:** o `lib/brand.ts` (substitui o `lib/resort.ts`) lê as metas e valida de novo: cor fora do formato ou logotipo diferente de `/brand/logo.png` valem o padrão. As cores entram no `:root` por CSSOM (`style.setProperty`), no `main.tsx`, antes do primeiro render: sem `<style>` inline e sem piscar a cor padrão.
+  - **Repositório:** `/brand/` no `.gitignore`, para um logotipo real nunca ser commitado. Os testes usam o tema fictício "Resort Fictício das Águas".
+- **Descartado:**
+  - **Logotipo em SVG** (retirado na aprovação): o convite é desenhado em canvas no celular do Prospector, muitas vezes um iPhone, e o SVG no canvas só seria validado no Chromium; além disso, validar SVG por lista de proibições (`<script>`, `<foreignObject>`, `on…=`) é frágil. A CSP `sandbox` da rota `/brand/` (D-119) fica como proteção extra.
+  - Endpoint e tabela no backend com upload: exigiria migration, tela e uma superfície de upload.
+  - Variáveis `VITE_*` no build: a imagem ficaria presa a um cliente.
+  - `theme.css` gerado pelo shell: a regra de contraste (D-118) ficaria duplicada em awk, sem os testes do Vitest.
+  - Logotipo em `data:` na meta: a CSP não aceita `data:` em `img-src`.
+  - Logotipo por URL externa: a CSP bloqueia, e o sistema dependeria de outro site.
+  - Servir o arquivo direto do diretório montado: um logotipo trocado sem reiniciar escaparia da validação.
+  - Cor em `rgb()`, `oklch()` ou por nome: validação mais complexa sem ganho; quem fornece a marca entrega o hexadecimal.
+  - Cair no tema padrão com valor inválido: esconderia o erro até a apresentação.
+
+## D-116 — Identidade padrão do Resortric
+
+- **Decisão:**
+  - O nome do produto fica numa constante única, `PRODUCT_NAME` em `frontend/src/lib/brand.ts`.
+  - Logotipo tipográfico em SVG (`frontend/public/resortric.svg`): "Resortric" com as letras desenhadas como traços, sem depender de fonte instalada e sem símbolo.
+  - Favicon fixo (`frontend/public/favicon.svg`): o "R" no mesmo traço, em branco sobre a cor padrão. Substitui o favicon padrão do Vite, que o projeto trazia desde a Fase 1.
+  - Cor padrão: `#1f4e79` (8,66:1 com texto branco).
+- **Descartado:** favicon a partir do logotipo do cliente (logotipo largo fica ilegível a 16 px) ou um terceiro arquivo de configuração só para ele (confirmado).
+
+## D-117 — Hierarquia da identidade do cliente
+
+- **Decisão (ajuste da aprovação):** em todo lugar que mostra a identidade (cabeçalho, login, título da aba, imagem do convite e ficha), a regra é única:
+  1. o logotipo, se houver;
+  2. senão, `RESORT_NAME` em texto;
+  3. senão, Resortric.
+
+  Um cliente só com `RESORT_NAME` nunca aparece como "Resortric". O título da aba é texto, então usa o nome: "Tela · `RESORT_NAME`", ou "Tela · Resortric" sem ele. O `alt` do logotipo é o `RESORT_NAME` ou, sem ele, "Logotipo do Resort".
+
+  | Lugar | Identidade | Resortric aparece |
+  |---|---|---|
+  | Cabeçalho | Hierarquia | Só no nível 3 |
+  | Login | Hierarquia, em destaque | No rodapé, sempre |
+  | Rodapé do sistema | — | Sempre, discreto |
+  | Título da aba | Nome da tela · `RESORT_NAME` ou Resortric | Só sem `RESORT_NAME` |
+  | Favicon | "R" do Resortric (D-116) | Sempre |
+  | Imagem do convite | Hierarquia, mais uma faixa na cor principal | Só no nível 3 |
+  | Ficha impressa | Hierarquia, com o logotipo de no máximo 12 mm de altura | Só no nível 3 |
+
+  A imagem do convite deixa de usar "Resort" como padrão: sem logotipo e sem nome, mostra "Resortric".
+- **Onde entra:** cabeçalho, título da aba e rodapé neste PR (Fase 12, PR 1); login, convite e ficha no PR 2.
+- **Cabeçalho:** continua branco, porque logotipos costumam ser feitos para fundo claro. A cor principal entra numa faixa de 4 px no topo, nos botões principais e no indicador do item ativo do menu. O item ativo tem também fundo e fonte em negrito (ajuste da aprovação), e a linha do indicador segue a regra de borda da D-118: com uma cor clara, ela fica escura, e o item continua reconhecível.
+
+## D-118 — Contraste da cor principal
+
+- **Decisão:**
+  - **Texto sobre a cor principal:** branco, se atingir 4,5:1; senão, **preto puro**. Com o preto puro, uma das duas opções sempre passa (o pior caso é 4,58:1, com luminância relativa em torno de 0,18); um "quase preto" como o `--foreground` cairia para 4,32:1.
+  - **Hover:** com texto branco, a cor escurece 12% (mistura com preto); com texto preto, clareia 12% (mistura com branco). O contraste do hover nunca é menor que o da base. O `hover:bg-primary/90` do shadcn clareava a cor, o que derrubaria o texto branco.
+  - **Borda (`--primary-edge`):** a própria cor se tiver pelo menos 3:1 contra o branco; senão, a cor escurecida até atingir 3:1. É a borda dos botões principais e a linha do item ativo do menu, para uma cor clara (por exemplo, `#f5d90a`, 1,42:1) não sumir no fundo branco.
+  - A cor principal nunca vira texto sobre branco, e o anel de foco (`--ring`) continua neutro.
+  - As contas seguem a WCAG 2.x (luminância relativa do sRGB). Variáveis: `--primary`, `--primary-foreground`, `--primary-hover`, `--primary-edge`; o `main.tsx` sempre as escreve no `:root` (com o tema do cliente ou com a cor padrão), e as do `index.css` são só o valor inicial.
+- **Descartado:** recusar cores claras na subida (a regra resolve o caso); escurecer a cor do cliente para usar texto branco (deixaria de ser a marca).
+- **Testes:** valores de referência (`#767676` dá branco, 4,54:1; `#777777` dá preto, 4,69:1) e uma varredura de 4.096 cores em que texto, hover e borda sempre atingem os mínimos.
+
+## D-119 — Logotipo só por `<img>` e rota `/brand/`
+
+- **Decisão:**
+  - O logotipo aparece só por `<img src="/brand/logo.png">`, nunca inline. No canvas do convite (PR 2), entra por `drawImage` de um `<img>` do próprio site.
+  - A CSP geral não muda: `img-src 'self'` já cobre o arquivo.
+  - A location `/brand/` do Nginx inclui os cabeçalhos de segurança de sempre e acrescenta uma CSP própria, `default-src 'none'; sandbox`, além de `Cache-Control: no-cache` (o arquivo pode mudar a cada subida) e 404 para o que não existe. Com o logotipo só em PNG, a `sandbox` é proteção extra: um arquivo aberto direto no navegador não roda nada na origem do sistema.
+- **Testes:** `prod-check.sh` confere tipo, `nosniff`, as duas CSPs e o `no-cache`; o E2E reprova qualquer violação de CSP com o logotipo na tela.

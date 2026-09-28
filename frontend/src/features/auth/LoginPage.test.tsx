@@ -1,7 +1,7 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import { me, mockFetch, problem, renderApp, unauthenticated } from '@/test/utils'
+import { me, mockFetch, problem, renderApp, setBrand, unauthenticated } from '@/test/utils'
 
 async function fillAndSubmit(email: string, password: string) {
   const user = userEvent.setup()
@@ -65,5 +65,18 @@ describe('LoginPage', () => {
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/chegadas'))
     expect(await screen.findByRole('heading', { name: 'Chegadas de hoje' })).toBeInTheDocument()
+  })
+
+  it('título da aba: "Entrar · Resortric" sem tema e "Entrar · RESORT_NAME" com o nome (D-117)', async () => {
+    mockFetch((_method, url) => (url === '/api/auth/me' ? unauthenticated : undefined))
+    const { unmount } = renderApp('/login')
+    await screen.findByRole('heading', { name: 'Entrar' })
+    await waitFor(() => expect(document.title).toBe('Entrar · Resortric'))
+    unmount()
+
+    setBrand({ name: 'Resort Fictício das Águas' })
+    renderApp('/login')
+    await screen.findByRole('heading', { name: 'Entrar' })
+    await waitFor(() => expect(document.title).toBe('Entrar · Resort Fictício das Águas'))
   })
 })

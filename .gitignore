@@ -4,6 +4,9 @@
 !.env.example
 !.env.prod.example
 
+# Logotipo real do cliente (BRAND_DIR padrão, D-115): nunca versionado.
+/brand/
+
 # Backend
 backend/target/
 

@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { landingPath } from '@/app/navigation'
+import { useDocumentTitle } from '@/app/useDocumentTitle'
 import { FieldError } from '@/components/FieldError'
 import { FormAlert } from '@/components/FormAlert'
 import { Button } from '@/components/ui/button'
@@ -32,6 +33,7 @@ type ChangePasswordForm = z.infer<typeof schema>
 
 export function ChangePasswordPage() {
   const { data: me } = useMe()
+  useDocumentTitle('Trocar senha')
   const queryClient = useQueryClient()
   const navigate = useNavigate()
   const {

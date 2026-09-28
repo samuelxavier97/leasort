@@ -72,6 +72,12 @@ BACKUP_HEALTH_INTERVAL=5s
 EOF
 # Valor com aspas no .env do compose: entre aspas simples, sem interpolação.
 printf "RESORT_NAME='%s'\n" "$RESORT_NAME_CHECK" >>"$ENV_FILE"
+# Tema fictício (D-115): cor em maiúsculas (o Nginx normaliza) e o logotipo fictício do E2E.
+BRAND_COLOR_CHECK='#1E3A5F'
+BRAND_LOGO_FIXTURE="$ROOT/frontend/e2e/fixtures/brand/logo.png"
+mkdir -p "$WORK/brand"
+cp "$BRAND_LOGO_FIXTURE" "$WORK/brand/logo.png"
+printf "BRAND_COLOR='%s'\nBRAND_DIR=%s\n" "$BRAND_COLOR_CHECK" "$WORK/brand" >>"$ENV_FILE"
 
 compose() { docker compose -p "$PROJECT" -f "$ROOT/docker-compose.prod.yml" --project-directory "$ROOT" --env-file "$ENV_FILE" "$@"; }
 
@@ -353,8 +359,115 @@ assert "b" not in page.tags, page.tags  # o <b> do nome não virou elemento
 PY
 EMPTY_META="$(docker run --rm --entrypoint sh "$NGINX_IMAGE" -c \
   '/docker-entrypoint.d/40-resort-name.sh && grep -o "<meta name=\"resort-name\"[^>]*>" /usr/share/nginx/html/index.html')"
-check "sem RESORT_NAME a meta fica vazia (o frontend mostra \"Resort\")" \
+check "sem RESORT_NAME a meta fica vazia (o frontend mostra \"Resortric\", D-117)" \
   test "$EMPTY_META" = '<meta name="resort-name" content="" />'
+
+echo "==> Tema do cliente injetado na subida (D-115, D-119)"
+brand_meta() { # brand_meta <arquivo html> <nome da meta>
+  python3 - "$1" "$2" <<'PY'
+import sys
+from html.parser import HTMLParser
+class Page(HTMLParser):
+    value = None
+    def handle_starttag(self, tag, attrs):
+        attrs = dict(attrs)
+        if tag == "meta" and attrs.get("name") == sys.argv[2]:
+            Page.value = attrs.get("content")
+Page().feed(open(sys.argv[1]).read())
+print(Page.value)
+PY
+}
+check "meta da cor com BRAND_COLOR normalizada para minúsculas" test "$(brand_meta "$WORK/index.html" resort-brand-color)" = "#1e3a5f"
+check "meta do logotipo com /brand/logo.png" test "$(brand_meta "$WORK/index.html" resort-brand-logo)" = "/brand/logo.png"
+tls -D "$WORK/h-brand" -o "$WORK/logo.served" "$BASE/brand/logo.png"
+check "/brand/logo.png é o PNG do diretório, como image/png" bash -c \
+  "head -1 '$WORK/h-brand' | grep -q ' 200' && cmp -s '$WORK/logo.served' '$BRAND_LOGO_FIXTURE' && grep -qi '^content-type: image/png' '$WORK/h-brand'"
+check "/brand/: CSP geral e CSP própria com sandbox (D-119)" test \
+  "$(grep -i '^content-security-policy:' "$WORK/h-brand" | cut -d: -f2- | sed -e 's/^ //' -e 's/\r$//' | sort | tr '\n' '|')" \
+  = "$(printf '%s\n' "default-src 'none'; sandbox" "$EXPECTED_CSP" | sort | tr '\n' '|')"
+check "/brand/: nosniff, HSTS e no-cache" test \
+  "$(header "$WORK/h-brand" X-Content-Type-Options)|$(header_count "$WORK/h-brand" Strict-Transport-Security)|$(header "$WORK/h-brand" Cache-Control)" \
+  = "nosniff|1|no-cache"
+check "/brand/nao-existe.png é 404" test "$(tls -o /dev/null -w '%{http_code}' "$BASE/brand/nao-existe.png")" = "404"
+
+make_png() { # make_png <arquivo> <largura> <altura> [tamanho exato em bytes]
+  python3 - "$@" <<'PY'
+import struct, sys, zlib
+path, width, height = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+size = int(sys.argv[4]) if len(sys.argv) > 4 else 0
+def chunk(kind, data):
+    return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+rows = b"".join(b"\0" + bytes((30, 58, 95)) * width for _ in range(height))
+body = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+body += chunk(b"IDAT", zlib.compress(rows, 9))
+end = chunk(b"IEND", b"")
+if size:  # bloco auxiliar privado até o tamanho pedido
+    body += chunk(b"prVt", b"\0" * (size - len(body) - len(end) - 12))
+open(path, "wb").write(body + end)
+PY
+}
+brand_run() { # brand_run <diretório> [BRAND_COLOR]: os dois scripts da subida, fora da pilha; saída e erro
+  docker run --rm -e "BRAND_COLOR=${2:-}" -v "$1:/etc/resort/brand:ro" --entrypoint sh "$NGINX_IMAGE" -c \
+    '/docker-entrypoint.d/40-resort-name.sh && /docker-entrypoint.d/41-resort-brand.sh && grep -o "<meta name=\"resort-brand[^>]*>" /usr/share/nginx/html/index.html | tr "\n" " " && ls /usr/share/nginx/html/brand 2>/dev/null' 2>&1
+}
+brand_case() { # brand_case <descrição> <conteúdo do diretório: vazio|svg|texto|assinatura|WxH[:bytes]> [BRAND_COLOR] <esperado na saída>
+  local what="$1" content="$2" color="$3" expected="$4" dir
+  dir="$(mktemp -d "$WORK/brand-case.XXXX")"
+  chmod 755 "$dir"
+  case "$content" in
+    vazio) ;;
+    svg) echo '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"/>' >"$dir/logo.svg" ;;
+    texto) echo 'isto não é um PNG' >"$dir/logo.png" ;;
+    assinatura) printf '\x89PNG\r\n\x1a\n' >"$dir/logo.png" ;;
+    *) local size="${content#*:}"; [ "$size" = "$content" ] && size=""
+       make_png "$dir/logo.png" "${content%%x*}" "$(echo "${content%%:*}" | cut -dx -f2)" $size ;;
+  esac
+  [ -e "$dir/logo.png" ] && chmod 644 "$dir/logo.png"
+  local output
+  output="$(brand_run "$dir" "$color")" && status=0 || status=$?
+  if [ "$expected" = "ok" ]; then
+    check "$what" bash -c "[ $status = 0 ] && grep -q 'content=\"/brand/logo.png\"' <<<'$output'"
+  else
+    check "$what (\"$expected\")" bash -c "[ $status != 0 ] && grep -qF -- '$expected' <<<'$output'"
+  fi
+}
+# O ls final falha sem /brand/, de propósito: aqui só a saída importa.
+EMPTY_BRAND="$(brand_run "$(mktemp -d "$WORK/brand-empty.XXXX")" || true)"
+check "sem tema, as metas ficam vazias e não há /brand/" \
+  test "$EMPTY_BRAND" = '<meta name="resort-brand-color" content="" /> <meta name="resort-brand-logo" content="" /> '
+for color in '#fff' 'red' '#12345g' '#1e3a5f"><script>' $'#1e3a5f\nx' ' #1e3a5f'; do
+  brand_case "cor $(printf '%q' "$color") recusada" vazio "$color" "BRAND_COLOR inválida"
+done
+brand_case "logotipo SVG recusado (só PNG)" svg "" "só PNG"
+brand_case "arquivo de texto com nome logo.png recusado" texto "" "não é um PNG válido"
+brand_case "PNG só com a assinatura, sem IHDR, recusado" assinatura "" "não é um PNG válido"
+brand_case "PNG com 256 KB + 1 byte recusado" "64x64:262145" "" "o máximo é 262144"
+brand_case "PNG com exatamente 256 KB aceito" "64x64:262144" "" ok
+brand_case "PNG com 2049 px de largura recusado" "2049x1" "" "largura e altura vão de 1 a 2048"
+brand_case "PNG com 2049 px de altura recusado" "1x2049" "" "largura e altura vão de 1 a 2048"
+brand_case "PNG com 2048 × 2048 px aceito" "2048x2048" "" ok
+FULL_START="$(timeout 60 docker run --rm -e BRAND_COLOR=red -e DOMAIN=localhost "$NGINX_IMAGE" 2>&1)" && FULL_STATUS=0 || FULL_STATUS=$?
+check "a subida completa do container para com cor inválida, com o motivo no log" \
+  bash -c "[ $FULL_STATUS != 0 ] && [ $FULL_STATUS != 124 ] && grep -q 'BRAND_COLOR inválida' <<<'$FULL_START'"
+
+# Troca do logotipo sem rebuild: o arquivo muda, a imagem do container continua a mesma.
+IMAGE_BEFORE="$(docker inspect -f '{{.Image}}' "$(compose ps -q nginx)")"
+make_png "$WORK/brand/logo.png" 300 80
+chmod 644 "$WORK/brand/logo.png"
+compose restart nginx >/dev/null 2>&1
+wait_healthy nginx || exit 1
+tls -o "$WORK/logo.swapped" "$BASE/brand/logo.png"
+check "trocar o logo.png e reiniciar serve o arquivo novo, com a mesma imagem" bash -c \
+  "cmp -s '$WORK/logo.swapped' '$WORK/brand/logo.png' && [ '$(docker inspect -f '{{.Image}}' "$(compose ps -q nginx)")' = '$IMAGE_BEFORE' ]"
+rm "$WORK/brand/logo.png"
+compose restart nginx >/dev/null 2>&1
+wait_healthy nginx || exit 1
+tls -o "$WORK/index-nologo.html" "$BASE/"
+check "sem o logo.png e reiniciado: /brand/logo.png é 404 e a meta fica vazia (a cópia anterior sai)" bash -c \
+  "[ '$(tls -o /dev/null -w '%{http_code}' "$BASE/brand/logo.png")' = 404 ] && [ '$(brand_meta "$WORK/index-nologo.html" resort-brand-logo)' = '' ]"
+cp "$BRAND_LOGO_FIXTURE" "$WORK/brand/logo.png"
+compose restart nginx >/dev/null 2>&1
+wait_healthy nginx || exit 1
 
 echo "==> Memória"
 HEAP_MB="$(compose exec -T backend java -XX:+PrintFlagsFinal -version 2>/dev/null | awk '$2 == "MaxHeapSize" { printf "%d", $4 / 1048576 }')"
