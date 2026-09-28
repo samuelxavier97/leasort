@@ -16,6 +16,8 @@ const BAND_HEIGHT = 24
 /** Caixa do logotipo: o logotipo é contido nela, sem distorcer, qualquer que seja a proporção. */
 export const LOGO_BOX = { x: 180, y: 64, width: 720, height: 160 }
 const QR_SIZE = 680
+/** Área do QR na imagem (usada também pelo E2E para conferir a nitidez). */
+export const QR_BOX = { x: (WIDTH - QR_SIZE) / 2, y: 470, width: QR_SIZE, height: QR_SIZE }
 const MAX_TEXT_WIDTH = WIDTH - 120
 
 export interface ShareImageContent {
@@ -106,7 +108,12 @@ export async function renderShareImage(content: ShareImageContent, qrPng: Blob):
   text(content.title, 290, 40)
   text(content.leadName, 370, 52, 'bold')
   text(content.date, 430, 40)
-  context.drawImage(qr, (WIDTH - QR_SIZE) / 2, 470, QR_SIZE, QR_SIZE)
+  // O QR vem da API com 512 px (módulos de 20,48 px) e é ampliado: sem suavização, cada módulo fica só
+  // preto ou branco, com bordas nítidas, qualquer que seja o filtro de reamostragem do navegador. Com
+  // suavização, as bordas interpoladas mudavam o tamanho de módulo que o leitor estima.
+  context.imageSmoothingEnabled = false
+  context.drawImage(qr, QR_BOX.x, QR_BOX.y, QR_BOX.width, QR_BOX.height)
+  context.imageSmoothingEnabled = true
   text(content.code, 1250, 88, 'bold', 'ui-monospace, monospace')
   text(content.instruction, 1335, 40)
 

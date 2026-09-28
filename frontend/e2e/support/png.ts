@@ -14,6 +14,20 @@ export interface PngContent {
   height: number
   /** Texto do QR Code encontrado na imagem. */
   qrText: string
+  /** Luminância (0 a 255) de cada pixel, linha a linha. */
+  luminance: number[]
+}
+
+/** Pixels com tom intermediário (nem quase preto nem quase branco) dentro de uma área da imagem. */
+export function midTones(png: PngContent, box: { x: number; y: number; width: number; height: number }): number {
+  let count = 0
+  for (let y = box.y; y < box.y + box.height; y++) {
+    for (let x = box.x; x < box.x + box.width; x++) {
+      const value = png.luminance[y * png.width + x]
+      if (value > 40 && value < 215) count++
+    }
+  }
+  return count
 }
 
 /**
@@ -43,7 +57,7 @@ export async function readPng(blankPage: Page, bytes: Buffer): Promise<PngConten
   const hints = new Map([[DecodeHintType.TRY_HARDER, true]])
   try {
     const qrText = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(source)), hints).getText()
-    return { width, height, qrText }
+    return { width, height, qrText, luminance }
   } catch (error) {
     throw new Error(`QR não lido na imagem inteira (${String(error)}). ${diagnose(source, hints)}`)
   }

@@ -4,7 +4,7 @@ import { fakeCpf, operationDate } from './support/data.ts'
 import { expect, login, test, type World } from './support/fixtures.ts'
 import { invitationCode } from './support/screens.ts'
 import { applyTheme, FICTIONAL_RESORT } from './support/brand.ts'
-import { readPng } from './support/png.ts'
+import { midTones, readPng } from './support/png.ts'
 
 /** Convite de hoje criado pela API; devolve o e-mail e a senha do Prospector e o id do convite. */
 async function invitation(world: World): Promise<{ prospector: { email: string; password: string }; id: string }> {
@@ -31,6 +31,9 @@ async function expectInvitationImage(blankPage: Page, bytes: Buffer, fileName: s
   const png = await readPng(blankPage, bytes)
   expect({ width: png.width, height: png.height }).toEqual({ width: 1080, height: 1440 })
   expect(png.qrText).toBe(`RSV:${code}`)
+  // O QR é desenhado sem suavização: módulos só pretos ou brancos, sem bordas interpoladas que mudem a
+  // leitura de um navegador para outro (achado no CI com o Chrome 153).
+  expect(midTones(png, { x: 200, y: 470, width: 680, height: 680 }), 'tons intermediários no QR').toBe(0)
 }
 
 /**
