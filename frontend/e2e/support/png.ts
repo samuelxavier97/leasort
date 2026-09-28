@@ -59,7 +59,7 @@ export async function readPng(blankPage: Page, bytes: Buffer): Promise<PngConten
     const qrText = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(source)), hints).getText()
     return { width, height, qrText, luminance }
   } catch (error) {
-    throw new Error(`QR não lido na imagem inteira (${String(error)}). ${diagnose(source, hints)}`)
+    throw new Error(`QR não lido na imagem inteira (${String(error)}). ${diagnose(source, hints)}\n${asciiMap(luminance, width, height)}`)
   }
 }
 
@@ -94,3 +94,28 @@ function diagnose(source: InstanceType<typeof RGBLuminanceSource>, hints: Map<zx
   }
   return `Candidatos: ${centers.join('; ') || 'nenhum'}. Só a parte de baixo (a partir de 1/3 da altura): ${lowerHalf}.`
 }
+
+/**
+ * A imagem em texto, para ver no log do CI o que o navegador desenhou: um mapa de células de 20 px
+ * (# escuro, + médio, . claro) e a grade de módulos da área do QR do convite (25 × 25, amostrada no
+ * centro de cada módulo).
+ */
+function asciiMap(luminance: number[], width: number, height: number): string {
+  const at = (x: number, y: number) => luminance[Math.min(height - 1, Math.round(y)) * width + Math.min(width - 1, Math.round(x))]
+  const shade = (value: number) => (value < 64 ? '#' : value < 128 ? '+' : value < 192 ? '.' : ' ')
+  const rows: string[] = ['Imagem (células de 20 px):']
+  for (let y = 10; y < height; y += 20) {
+    let row = ''
+    for (let x = 10; x < width; x += 20) row += shade(at(x, y))
+    rows.push(`|${row}|`)
+  }
+  rows.push('Módulos da área do QR (x 200, y 470, 680 px):')
+  const module = 680 / 25
+  for (let j = 0; j < 25; j++) {
+    let row = ''
+    for (let i = 0; i < 25; i++) row += shade(at(200 + (i + 0.5) * module, 470 + (j + 0.5) * module)) === '#' ? '##' : shade(at(200 + (i + 0.5) * module, 470 + (j + 0.5) * module)) === ' ' ? '  ' : '??'
+    rows.push(`|${row}|`)
+  }
+  return rows.join('\n')
+}
+
