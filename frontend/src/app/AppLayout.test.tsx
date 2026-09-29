@@ -128,3 +128,62 @@ describe('AppLayout — identidade do cliente (D-117)', () => {
     expect(document.documentElement.style.getPropertyValue('--primary-edge')).not.toBe('#f5d90a')
   })
 })
+
+describe('AppLayout — menu do celular (A8, D-122)', () => {
+  function mockGate(onLogout?: () => void) {
+    let loggedIn = true
+    mockFetch((method, url) => {
+      if (url === '/api/auth/me') return loggedIn ? { body: me('GATE') } : { status: 401, body: { code: 'UNAUTHENTICATED' } }
+      if (method === 'POST' && url === '/api/auth/logout') {
+        loggedIn = false
+        onLogout?.()
+        return { status: 204 }
+      }
+      if (url === '/api/access/recent') return { body: [] }
+    })
+  }
+
+  it('o botão Menu traz o usuário, os itens do perfil com o ativo marcado, Trocar senha e Sair', async () => {
+    const user = userEvent.setup()
+    mockGate()
+    renderApp('/portaria')
+    await screen.findByRole('heading', { name: 'Validar Convite' })
+
+    await user.click(screen.getByRole('button', { name: 'Menu' }))
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByText('Usuário GATE')).toBeInTheDocument()
+    expect(within(menu).getByText('Portaria')).toBeInTheDocument()
+    const items = within(menu).getAllByRole('menuitem').map((item) => item.textContent)
+    expect(items).toEqual(['Validar Convite', 'Acessos Recentes', 'Trocar senha', 'Sair'])
+    const active = within(menu).getByRole('menuitem', { name: 'Validar Convite' })
+    expect(active).toHaveAttribute('aria-current', 'page')
+    expect(active).toHaveClass('font-semibold', 'border-primary-edge')
+  })
+
+  it('um item do Menu navega; Sair pelo Menu encerra a sessão', async () => {
+    const user = userEvent.setup()
+    let loggedOut = false
+    mockGate(() => (loggedOut = true))
+    const { router } = renderApp('/portaria')
+    await screen.findByRole('heading', { name: 'Validar Convite' })
+
+    await user.click(screen.getByRole('button', { name: 'Menu' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Acessos Recentes' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/acessos'))
+
+    await user.click(screen.getByRole('button', { name: 'Menu' }))
+    await user.click(await screen.findByRole('menuitem', { name: 'Sair' }))
+    await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
+    expect(loggedOut).toBe(true)
+  })
+
+  it('no celular, o menu do cabeçalho e o usuário ficam escondidos e o botão Menu aparece; no computador, o contrário', async () => {
+    mockGate()
+    renderApp('/portaria')
+    await screen.findByRole('heading', { name: 'Validar Convite' })
+    expect(screen.getByRole('navigation', { name: 'Menu principal' })).toHaveClass('hidden', 'md:flex')
+    expect(screen.getByRole('button', { name: 'Usuário GATE' }).parentElement).toHaveClass('hidden', 'md:block')
+    expect(screen.getByRole('button', { name: 'Menu' }).parentElement).toHaveClass('md:hidden')
+  })
+})
+

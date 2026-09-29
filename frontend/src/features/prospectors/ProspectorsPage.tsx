@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { toast } from 'sonner'
 import { z } from 'zod'
+import { EmptyState, LoadError, PageLoading } from '@/components/PageState'
 import { FieldError } from '@/components/FieldError'
 import { FormAlert } from '@/components/FormAlert'
 import { Pagination } from '@/components/Pagination'
@@ -43,8 +44,10 @@ export function ProspectorsPage() {
       <p className="text-sm text-muted-foreground">
         Prospectores são criados em Usuários. Ativação e desativação também ficam em Usuários.
       </p>
-      {prospectors.isError && <p className="text-destructive">{errorMessage(prospectors.error)}</p>}
-      {prospectors.data && (
+      {prospectors.isPending && <PageLoading />}
+      {prospectors.isError && <LoadError error={prospectors.error} onRetry={() => prospectors.refetch()} />}
+      {prospectors.data?.content.length === 0 && <EmptyState>Nenhum Prospector cadastrado. Crie em Usuários, com o perfil Prospector.</EmptyState>}
+      {!!prospectors.data?.content.length && (
         <div className="overflow-x-auto rounded-md border bg-background">
           <Table>
             <TableHeader>

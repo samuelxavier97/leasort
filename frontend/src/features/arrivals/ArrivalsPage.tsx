@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { EmptyState, LoadError, Notice, PageLoading } from '@/components/PageState'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useMe } from '@/features/auth/useMe'
 import { ApiError } from '@/lib/api'
 import { formatOperationTime, operationToday } from '@/lib/date'
-import { errorMessage } from '@/lib/errors'
 import { formatDate } from '@/lib/format'
 import { arrivalsQueryKey, listArrivals } from './api'
 import { ARRIVALS_POLLING_MS } from './labels'
@@ -60,17 +60,15 @@ export function ArrivalsPage() {
       </div>
 
       {arrivals.isRefetchError && isTransient(arrivals.error) && (
-        <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm text-amber-900">
-          Não foi possível atualizar. Nova tentativa em instantes.
-        </p>
+        <Notice tone="warning">Não foi possível atualizar. Nova tentativa em instantes.</Notice>
       )}
 
       {arrivals.isPending ? (
-        <p className="text-muted-foreground">Carregando...</p>
+        <PageLoading />
       ) : !arrivals.data ? (
-        <p className="text-destructive">{errorMessage(arrivals.error)}</p>
+        <LoadError error={arrivals.error} onRetry={() => arrivals.refetch()} />
       ) : arrivals.data.arrivals.length === 0 ? (
-        <p className="text-muted-foreground">Nenhuma chegada registrada neste dia.</p>
+        <EmptyState>Nenhuma chegada registrada neste dia.</EmptyState>
       ) : (
         <div className="rounded-md border bg-background">
           {/* Células quebram linha: no celular, o link da ficha fica sempre à vista, sem rolagem lateral. */}

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { toast } from 'sonner'
+import { LoadError, PageLoading } from '@/components/PageState'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { FormAlert } from '@/components/FormAlert'
 import { Badge } from '@/components/ui/badge'
@@ -82,17 +83,17 @@ export function InvitationPage() {
   }
 
   if (invitation.isPending) {
-    return <p className="text-muted-foreground">Carregando...</p>
+    return <PageLoading />
   }
   if (invitation.isError) {
-    return <p className="text-destructive">{errorMessage(invitation.error)}</p>
+    return <LoadError error={invitation.error} onRetry={() => invitation.refetch()} />
   }
 
   const data = invitation.data
   const mutationError = reissue.error ?? cancel.error
 
   return (
-    <section className="max-w-xl space-y-4">
+    <section className="max-w-3xl space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Convite</h1>
         <Badge variant={active ? 'secondary' : 'outline'}>{INVITATION_STATUS_LABELS[data.status]}</Badge>
@@ -101,7 +102,7 @@ export function InvitationPage() {
       <FormAlert message={mutationError ? errorMessage(mutationError) : null} />
 
       <Card>
-        <CardContent className="space-y-4 pt-6">
+        <CardContent className="space-y-4">
           <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2 text-sm">
             <dt className="text-muted-foreground">Lead</dt>
             <dd>
@@ -162,7 +163,7 @@ export function InvitationPage() {
         )}
         {/* Convite reemitido ou cancelado não oferece ações da visita: a visita segue pelo convite atual. */}
         {active && data.visit.canEdit && (
-          <Button variant="outline" onClick={() => setConfirmCancel(true)} disabled={cancel.isPending}>
+          <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setConfirmCancel(true)} disabled={cancel.isPending}>
             Cancelar visita
           </Button>
         )}
@@ -185,6 +186,7 @@ export function InvitationPage() {
         title="Cancelar visita"
         description={`A visita de ${formatDate(data.visit.scheduledDate)} e este convite serão cancelados, e o Lead volta para "Contatado".`}
         confirmLabel="Confirmar cancelamento"
+        destructive
         pending={cancel.isPending}
         onConfirm={() => cancel.mutate(data)}
         onCancel={() => setConfirmCancel(false)}

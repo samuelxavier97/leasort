@@ -11,7 +11,7 @@ export function ProfilePage() {
     return null
   }
   return (
-    <section className="max-w-lg space-y-4">
+    <section className="max-w-md space-y-4">
       <h1 className="text-2xl font-semibold">Perfil</h1>
       <Card>
         <CardHeader>

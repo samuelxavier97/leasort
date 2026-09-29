@@ -1,11 +1,11 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
+import { LoadError, PageLoading } from '@/components/PageState'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { errorMessage } from '@/lib/errors'
 import { formatDate } from '@/lib/format'
 import { listVisits, visitsQueryKey } from './api'
 import { VISIT_STATUS_LABELS } from './labels'
@@ -25,8 +25,8 @@ export function LeadVisits({ leadId }: { leadId: string }) {
         <CardTitle>Histórico de visitas</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {visits.isPending && <p className="text-sm text-muted-foreground">Carregando...</p>}
-        {visits.isError && <p className="text-sm text-destructive">{errorMessage(visits.error)}</p>}
+        {visits.isPending && <PageLoading />}
+        {visits.isError && <LoadError error={visits.error} onRetry={() => visits.refetch()} />}
         {visits.data && visits.data.content.length === 0 && (
           <p className="text-sm text-muted-foreground">Nenhuma visita.</p>
         )}

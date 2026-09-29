@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
+import { Notice } from '@/components/PageState'
 import { FormAlert } from '@/components/FormAlert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -78,9 +79,7 @@ export function ImportLeadsPage() {
       </Card>
 
       {mutation.isSuccess && (
-        <p role="status" className="rounded-md border border-green-600/30 bg-green-600/5 p-3 text-sm">
-          {mutation.data.imported === 1 ? '1 Lead importado.' : `${mutation.data.imported} Leads importados.`}
-        </p>
+        <Notice tone="success">{mutation.data.imported === 1 ? '1 Lead importado.' : `${mutation.data.imported} Leads importados.`}</Notice>
       )}
       {mutation.isError && <FormAlert message={errorMessage(mutation.error)} />}
       {rowErrors.length > 0 && (

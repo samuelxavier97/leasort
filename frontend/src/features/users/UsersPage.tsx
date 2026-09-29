@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tansta
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { ROLE_LABELS } from '@/app/navigation'
+import { EmptyState, LoadError, PageLoading } from '@/components/PageState'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { Pagination } from '@/components/Pagination'
 import { Badge } from '@/components/ui/badge'
@@ -59,8 +60,10 @@ export function UsersPage() {
         <Button onClick={() => setForm({ open: true, user: null })}>Novo usuário</Button>
       </div>
 
-      {users.isError && <p className="text-destructive">{errorMessage(users.error)}</p>}
-      {users.data && (
+      {users.isPending && <PageLoading />}
+      {users.isError && <LoadError error={users.error} onRetry={() => users.refetch()} />}
+      {users.data?.content.length === 0 && <EmptyState>Nenhum usuário encontrado.</EmptyState>}
+      {!!users.data?.content.length && (
         <div className="overflow-x-auto rounded-md border bg-background">
           <Table>
             <TableHeader>
@@ -138,6 +141,7 @@ export function UsersPage() {
               : `${pending?.user.name ?? ''} voltará a ter acesso.`
         }
         confirmLabel="Confirmar"
+        destructive={pending?.kind === 'status' && pending.user.active}
         pending={action.isPending}
         onConfirm={() => pending && action.mutate(pending)}
         onCancel={() => setPending(null)}

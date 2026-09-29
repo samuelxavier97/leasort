@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CircleCheck, CircleX } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { Notice } from '@/components/PageState'
 import { FormAlert } from '@/components/FormAlert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -108,7 +109,7 @@ export function GatePage() {
         </h1>
         <FormAlert message={register.error ? errorMessage(register.error) : null} />
         <Card>
-          <CardContent className="space-y-4 pt-6">
+          <CardContent className="space-y-4">
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
               <dt className="text-muted-foreground">Nome</dt>
               <dd className="min-w-0 break-words font-semibold">{access.leadName}</dd>
@@ -172,7 +173,7 @@ export function GatePage() {
           ACESSO NEGADO
         </h1>
         <Card>
-          <CardContent className="space-y-2 pt-6">
+          <CardContent className="space-y-2">
             <p className="text-xl font-semibold">{DENIAL_REASON_LABELS[view.reason]}</p>
             <p>{denialMessage(view.reason, view.scheduledDate)}</p>
           </CardContent>
@@ -189,9 +190,7 @@ export function GatePage() {
       <h1 className="text-center text-2xl font-semibold">Validar Convite</h1>
       <FormAlert message={error ? errorMessage(error) : null} />
       {cameraProblem && (
-        <p role="status" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-          {CAMERA_PROBLEM_MESSAGES[cameraProblem]}
-        </p>
+        <Notice tone="warning">{CAMERA_PROBLEM_MESSAGES[cameraProblem]}</Notice>
       )}
 
       {view.kind === 'scan' ? (

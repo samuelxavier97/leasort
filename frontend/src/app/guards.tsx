@@ -1,4 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router'
+import { PageLoading } from '@/components/PageState'
 import type { Role } from '@/features/auth/types'
 import { useMe } from '@/features/auth/useMe'
 import { landingPath } from './navigation'
@@ -9,7 +10,11 @@ export function RequireAuth() {
   const location = useLocation()
 
   if (isPending) {
-    return <p className="p-6 text-muted-foreground">Carregando...</p>
+    return (
+      <div className="p-6">
+        <PageLoading />
+      </div>
+    )
   }
   if (isError) {
     return <p className="p-6 text-destructive">Não foi possível conectar ao servidor.</p>

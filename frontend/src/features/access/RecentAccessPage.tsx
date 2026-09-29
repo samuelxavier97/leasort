@@ -1,9 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
+import { EmptyState, LoadError, PageLoading } from '@/components/PageState'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useMe } from '@/features/auth/useMe'
 import { formatOperationTime } from '@/lib/date'
-import { errorMessage } from '@/lib/errors'
 import { listRecentAccess, recentAccessQueryKey } from './api'
 import { ACCESS_RESULT_LABELS, DENIAL_REASON_LABELS } from './labels'
 
@@ -20,14 +20,14 @@ export function RecentAccessPage() {
         <p className="text-sm text-muted-foreground">Validações de hoje, da mais recente para a mais antiga.</p>
       </div>
       {recent.isPending ? (
-        <p className="text-muted-foreground">Carregando...</p>
+        <PageLoading />
       ) : recent.isError ? (
-        <p className="text-destructive">{errorMessage(recent.error)}</p>
+        <LoadError error={recent.error} onRetry={() => recent.refetch()} />
       ) : recent.data.length === 0 ? (
-        <p className="text-muted-foreground">Nenhum acesso registrado hoje.</p>
+        <EmptyState>Nenhum acesso registrado hoje.</EmptyState>
       ) : (
         <div className="rounded-md border bg-background">
-          <Table>
+          <Table className="table-cards">
             <TableHeader>
               <TableRow>
                 <TableHead>Hora</TableHead>
@@ -41,17 +41,17 @@ export function RecentAccessPage() {
             <TableBody>
               {recent.data.map((access) => (
                 <TableRow key={access.id}>
-                  <TableCell>{formatOperationTime(access.createdAt)}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Hora">{formatOperationTime(access.createdAt)}</TableCell>
+                  <TableCell data-label="Resultado">
                     {/* As mesmas cores fixas do resultado da Portaria (D-120). */}
                     <Badge variant={access.result === 'AUTHORIZED' ? 'ok' : 'denied'}>
                       {ACCESS_RESULT_LABELS[access.result]}
                     </Badge>
                   </TableCell>
-                  <TableCell>{access.denialReason ? DENIAL_REASON_LABELS[access.denialReason] : '—'}</TableCell>
-                  <TableCell>{access.leadName ?? '—'}</TableCell>
-                  <TableCell>{access.gate}</TableCell>
-                  <TableCell>{access.validatedBy}</TableCell>
+                  <TableCell data-label="Motivo">{access.denialReason ? DENIAL_REASON_LABELS[access.denialReason] : '—'}</TableCell>
+                  <TableCell data-label="Lead">{access.leadName ?? '—'}</TableCell>
+                  <TableCell data-label="Portaria">{access.gate}</TableCell>
+                  <TableCell data-label="Validado por">{access.validatedBy}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

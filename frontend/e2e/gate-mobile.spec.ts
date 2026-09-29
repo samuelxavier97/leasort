@@ -45,6 +45,11 @@ test('E9: Portaria no celular, com LIBERADO e NEGADO nas cores fixas e sem rolag
   await expect(page).toHaveURL('/portaria')
   expect(page.viewportSize()!.width).toBeLessThan(500)
   expect(await noHorizontalScroll(page), 'início').toBe(true)
+  // Cabeçalho numa linha só no celular: a identidade e o botão Menu, sem o menu quebrado em linhas (A8).
+  const header = (await page.getByRole('banner').boundingBox())!
+  expect(header.height, 'altura do cabeçalho').toBeLessThanOrEqual(72)
+  await expect(page.getByRole('navigation', { name: 'Menu principal' })).toBeHidden()
+  await expect(page.getByRole('button', { name: 'Menu' })).toBeVisible()
 
   await openTyping(page)
   await typeCode(page, code)

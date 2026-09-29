@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router'
-import { errorMessage } from '@/lib/errors'
+import { LoadError, PageLoading } from '@/components/PageState'
 import { formatDate } from '@/lib/format'
 import { dashboardQueryKey, getProspectorSummary, getVisitsByDay } from './api'
 import { DayChart } from './DayChart'
@@ -17,9 +17,9 @@ export function ProspectorDashboard() {
       <section className="space-y-5">
         <h1 className="text-2xl font-semibold">Dashboard</h1>
         {summary.isError ? (
-          <p className="text-destructive">{errorMessage(summary.error)}</p>
+          <LoadError error={summary.error} onRetry={() => summary.refetch()} />
         ) : (
-          <p className="text-muted-foreground">Carregando...</p>
+          <PageLoading />
         )}
       </section>
     )
