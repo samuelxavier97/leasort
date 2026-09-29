@@ -16,6 +16,8 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:8080',
     },
+    // Só no Vitest: os PNGs do teste com câmera (D-123) ficam fora de frontend/.
+    ...(process.env.VITEST ? { fs: { allow: ['.', '../docs/qr-teste-camera'] } } : {}),
   },
   test: {
     environment: 'jsdom',
