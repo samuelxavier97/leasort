@@ -1035,3 +1035,16 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - E4: o QR real do convite, pela câmera, continua liberando o acesso.
   - E4b: pela câmera, o `a01` e o `c01` a 70% da altura, com "Código inválido" como prova de leitura.
 - **Impacto:** o E2E continua lendo a imagem do convite em qualquer orientação (`readAnyOrientation`), porque o que ele confere é o desenho do QR, não o leitor da Portaria.
+
+## D-124 — Pendência da 11b: verificação de exportação em fluxo depende do buffer de TCP do host
+
+- **Contexto:** o `prod-check.sh`, na seção "Exportação chega aos poucos pelo Nginx (D-101, D-107)", grava 100 mil Leads fictícios (uma exportação de cerca de 20 MB), baixa `/api/exports/leads` com um cliente lento (`curl --limit-rate 1M`) e, aos 6 s, confere quatro coisas: que o download ainda corre, que o backend ainda tem a transação da exportação aberta no banco, que o primeiro byte chegou em menos de 3 s e que o total passou de 12 s. A segunda verificação é a que prova que o Nginx não guarda a resposta (`proxy_buffering off`) e que o backend acompanha o ritmo do cliente.
+- **Fragilidade:** entre o backend e o `curl` há buffers de TCP que o Nginx não controla. O `curl` e a porta publicada pelo Docker (`docker-proxy`) rodam no namespace de rede do host e seguem o `net.ipv4.tcp_rmem` dele. Se eles couberem a exportação inteira, o backend escreve tudo, fecha a transação e devolve a conexão antes dos 6 s, embora o `curl` ainda esteja recebendo aos poucos. O produto continua certo (os bytes ficam no kernel, não na memória da JVM), mas a verificação reprova. Na verificação local do PR 4 da Fase 12, num host com `net.ipv4.tcp_rmem` de até 32 MB (33554432), ela falhou uma vez ("transação aberta: 0") e passou na rodada seguinte; as outras três verificações da seção passaram nas duas. O resultado varia porque o autoajuste do TCP nem sempre leva o buffer ao máximo. O padrão do Linux é bem menor (6 MB), e o `prod-stack` do CI (runner `ubuntu-latest`) não falhou por isso nas execuções da Fase 12.
+- **Opções para a 11b** (nenhuma aplicada agora; o teste não muda):
+  1. **Cliente lento num container com buffer fixo:** rodar o `curl` num container na rede da pilha com `--sysctl net.ipv4.tcp_rmem="4096 131072 1048576"` (sysctl do namespace de rede, aceito pelo Docker), falando direto com o Nginx. O buffer de recepção deixa de depender do host. Custo: mais uma imagem com `curl` no prod-check.
+  2. **Exportação maior que qualquer buffer:** subir o volume para passar com folga do maior buffer plausível (por exemplo, 500 mil Leads, cerca de 100 MB). Custo: o prod-check fica mais lento (a 1 MB/s, mais de 100 s só nessa etapa) e usa mais disco.
+  3. **Verificação relativa:** amostrar o `pg_stat_activity` durante todo o download e exigir que a transação dure uma fração mínima do tempo total, em vez de estar aberta num instante fixo. Reduz a dependência, mas não a elimina.
+  4. **Só documentar:** manter o teste e registrar no `docs/DEPLOY.md` que o `prod-check` pressupõe `tcp_rmem` padrão. Custo zero, mas a falha continua possível em hosts com buffer grande, inclusive a VPS.
+
+  A opção 1 é a recomendada: é a única que torna a verificação independente do host sem aumentar o tempo do prod-check.
+- **Onde entra:** na 11b, antes de rodar o `prod-check` na VPS de produção, cujo `tcp_rmem` ainda não é conhecido.
