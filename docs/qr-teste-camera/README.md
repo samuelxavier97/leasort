@@ -1,6 +1,6 @@
 # Teste da câmera da Portaria com QRs difíceis
 
-Pendência D-123. O scanner da Portaria usa o `@zxing/library` 0.23. Esse leitor não acha os padrões de localização de parte dos QRs corretos gerados pelo backend. Este teste mede o que acontece com a câmera de verdade, antes de decidir o que fazer (girar o quadro, `BarcodeDetector` ou só acompanhar).
+Confirmação da D-123. O scanner da Portaria usa o `@zxing/library` 0.23, que não acha os padrões de localização de parte dos QRs corretos gerados pelo backend numa das orientações. Desde o PR 4 da Fase 12, o scanner alterna a orientação a cada quadro (normal e girada 90°). Este teste confirma, com a câmera de verdade, que esses QRs passam a ser lidos.
 
 ## Números medidos (sem câmera, na imagem do PNG)
 
@@ -10,14 +10,15 @@ Pendência D-123. O scanner da Portaria usa o `@zxing/library` 0.23. Esse leitor
 |---|---|
 | zxing-js 0.23 (o da Portaria), com e sem TRY_HARDER | 72 (2,4%) |
 | zxing-js 0.23 com a imagem girada 90°, 180° ou 270° | 1 dos 72 |
+| Scanner da Portaria, alternando normal e girada 90° no sentido anti-horário | 4 dos 72 |
 | ZXing Java 3.5.4 (o do backend) | 12 (0,4%), todos entre os 72 |
 
 ## Arquivos
 
 Todos são PNGs de 512 px, iguais aos da API. O nome é `grupo-código.png`.
 
-- **`a01` a `a12`:** não lidos pelo zxing-js nem pelo ZXing Java.
-- **`b01` a `b08`:** não lidos pelo zxing-js, lidos pelo ZXing Java.
+- **`a01` a `a12`:** não lidos pelo zxing-js (na orientação normal) nem pelo ZXing Java.
+- **`b01` a `b08`:** não lidos pelo zxing-js (na orientação normal), lidos pelo ZXing Java.
 - **`c01` a `c04`:** controle, lidos pelos dois. Se um controle não for lido, o problema é o procedimento (brilho, distância, foco), não o QR.
 
 Os códigos não existem no banco, então a Portaria responde "Código inválido". **"Código inválido" conta como leitura**: a câmera leu o QR e a validação rodou.
@@ -28,9 +29,8 @@ No servidor de demonstração, por HTTPS (a câmera só abre em contexto seguro,
 
 1. **Celular da Portaria:** entre com um usuário GATE e toque em [ESCANEAR QR CODE].
 2. **Outro celular:** abra cada PNG em tela cheia, com o brilho no máximo e sem modo noturno.
-3. **Em pé:** aponte a câmera da Portaria para o QR em pé, a uns 20 cm, por até 5 segundos.
-4. **Girado:** se não ler, gire o celular do QR 90° e tente por mais 5 segundos.
-5. **Anote:** "em pé", "girado" ou "não leu". Depois de cada leitura, toque em [NOVA VALIDAÇÃO].
+3. **Leitura:** aponte a câmera da Portaria para o QR em pé, a uns 20 cm, por até 5 segundos. Não gire o celular: o scanner já alterna a orientação.
+4. **Anote:** "leu" ou "não leu" e, se leu, se demorou mais de 2 segundos. Depois de cada leitura, toque em [NOVA VALIDAÇÃO].
 
 Faça primeiro os quatro controles (`c01` a `c04`).
 
@@ -38,7 +38,7 @@ Faça primeiro os quatro controles (`c01` a `c04`).
 
 Celular da Portaria (modelo e navegador): ______________________
 
-| Arquivo | Leu em pé | Leu girado | Não leu | Observação |
+| Arquivo | Leu | Não leu | Demorou mais de 2 s | Observação |
 |---|---|---|---|---|
 | c01-00803J52QK | | | | |
 | c02-00898YQZMJ | | | | |

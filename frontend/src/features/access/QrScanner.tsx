@@ -1,6 +1,7 @@
-import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser'
+import type { IScannerControls } from '@zxing/browser'
 import { useEffect, useRef } from 'react'
 import type { CameraProblem } from './labels'
+import { PortariaQrReader } from './portariaQrReader'
 
 function problemOf(error: unknown): CameraProblem {
   const name = error instanceof Error || error instanceof DOMException ? error.name : ''
@@ -8,8 +9,9 @@ function problemOf(error: unknown): CameraProblem {
 }
 
 /**
- * Leitor de QR com `@zxing/browser` (D-030). Entrega o texto lido como está (o backend normaliza,
- * §12.1) e para a câmera logo após a primeira leitura e ao sair da tela.
+ * Leitor de QR com `@zxing/browser` (D-030), alternando a orientação a cada quadro (D-123). Entrega o
+ * texto lido como está (o backend normaliza, §12.1) e para a câmera logo após a primeira leitura e ao
+ * sair da tela.
  */
 export function QrScanner({ onRead, onProblem }: { onRead: (text: string) => void; onProblem: (problem: CameraProblem) => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -46,7 +48,7 @@ export function QrScanner({ onRead, onProblem }: { onRead: (text: string) => voi
       video.remove()
     }
 
-    new BrowserQRCodeReader()
+    new PortariaQrReader()
       .decodeFromConstraints({ video: { facingMode: 'environment' } }, video, (result, _error, scanControls) => {
         if (!active || !result) return
         active = false
