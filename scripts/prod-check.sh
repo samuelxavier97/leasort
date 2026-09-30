@@ -703,6 +703,87 @@ check "rollback: a versão anterior volta a rodar, com o health público no ar" 
    [ \"\$(curl -s --cacert '$WORK/certs/ca.crt' '$BASE/actuator/health')\" = '{\"status\":\"UP\"}' ]"
 docker rmi resort-backend:ensaio-nova resort-nginx:ensaio-nova >/dev/null 2>&1 || true
 
+echo "==> Instalação de demonstração: carga e recarga (D-125)"
+DEMO_ENV="$WORK/env.demo"
+cp "$ENV_FILE" "$DEMO_ENV"
+echo "DEMO_INSTANCE=true" >>"$DEMO_ENV"
+export DEMO_ADMIN_PASSWORD="demo-admin-$(secret)" DEMO_PROSPECTOR_PASSWORD="demo-prospector-$(secret)"
+export DEMO_GATE_PASSWORD="demo-portaria-$(secret)" DEMO_HOST_PASSWORD="demo-anfitriao-$(secret)"
+compose_demo() { docker compose -p "$PROJECT" -f "$ROOT/docker-compose.prod.yml" --project-directory "$ROOT" --env-file "$DEMO_ENV" "$@"; }
+demo_script() { # demo_script <log> <script> <.env> [domínio digitado]: a saída do script
+  local log="$1" script="$2" env="$3"
+  printf '%s\n' "${4:-}" | COMPOSE_PROJECT_NAME="$PROJECT" "$ROOT/scripts/$script" "$env" >"$log" 2>&1
+}
+demo_login() { # demo_login <jar> <e-mail> <senha>: o corpo da resposta do login
+  rm -f "$1"
+  tls -c "$1" -o /dev/null "$BASE/api/auth/me"
+  tls -b "$1" -c "$1" -H 'Content-Type: application/json' -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' "$1" | tail -1)" \
+    --data "{\"email\":\"$2\",\"password\":\"$3\"}" "$BASE/api/auth/login"
+}
+STATE_REAL="$(db_state)"
+demo_script "$WORK/demo-1.log" demo-load.sh "$ENV_FILE" && status=0 || status=$?
+check "carga sem DEMO_INSTANCE=true recusada (saída $status), sem alterar o banco" \
+  bash -c "[ $status = 2 ] && grep -q 'DEMO_INSTANCE=true' '$WORK/demo-1.log' && [ '$(db_state)' = '$STATE_REAL' ]"
+demo_script "$WORK/demo-2.log" demo-reset.sh "$ENV_FILE" "$DOMAIN" && status=0 || status=$?
+check "recarga sem DEMO_INSTANCE=true recusada (saída $status), sem alterar o banco" \
+  bash -c "[ $status = 2 ] && grep -q 'Nada foi apagado' '$WORK/demo-2.log' && [ '$(db_state)' = '$STATE_REAL' ]"
+demo_script "$WORK/demo-3.log" demo-load.sh "$DEMO_ENV" && status=0 || status=$?
+check "com DEMO_INSTANCE=true, a carga num banco com dados recusada (saída $status), sem alterar o banco" \
+  bash -c "[ $status = 2 ] && grep -q 'ADMIN inicial e nada mais' '$WORK/demo-3.log' && [ '$(db_state)' = '$STATE_REAL' ]"
+demo_script "$WORK/demo-4.log" demo-reset.sh "$DEMO_ENV" "$DOMAIN" && status=0 || status=$?
+check "com DEMO_INSTANCE=true e o domínio certo, a recarga de um banco com usuários de verdade recusada (saída $status)" \
+  bash -c "[ $status = 2 ] && grep -q 'não são da demonstração' '$WORK/demo-4.log' && [ '$(db_state)' = '$STATE_REAL' ]"
+check "a recarga recusada não parou a pilha" test "$(tls -o /dev/null -w '%{http_code}' "$BASE/actuator/health")" = "200"
+if grep -Eq 'demo-(admin|prospector|portaria|anfitriao)-' "$WORK"/demo-*.log; then
+  fail "uma senha da demonstração apareceu na saída dos scripts"
+fi
+
+# Um banco novo, só com o ADMIN inicial, como na primeira subida de uma instalação de demonstração.
+compose stop nginx backend backup >/dev/null 2>&1
+compose exec -T -u postgres postgres psql -v ON_ERROR_STOP=1 -d postgres >/dev/null <<'SQL'
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'resort' AND pid <> pg_backend_pid();
+DROP DATABASE resort;
+CREATE DATABASE resort OWNER resort_owner;
+REVOKE ALL ON DATABASE resort FROM PUBLIC;
+GRANT CONNECT ON DATABASE resort TO resort_owner, resort_app, resort_backup;
+\connect resort
+ALTER SCHEMA public OWNER TO resort_owner;
+REVOKE ALL ON SCHEMA public FROM PUBLIC;
+GRANT USAGE ON SCHEMA public TO resort_app, resort_backup;
+SQL
+compose_demo up -d >/dev/null 2>&1
+wait_healthy nginx || exit 1
+demo_script "$WORK/demo-5.log" demo-load.sh "$DEMO_ENV" && status=0 || status=$?
+check "carga num banco só com o ADMIN inicial (saída $status)" bash -c "[ $status = 0 ] && grep -q 'Demonstração carregada' '$WORK/demo-5.log'"
+sed -n 's/^  \(.*\): \([0-9]*\)$/uso  demonstração: \1 = \2/p' "$WORK/demo-5.log"
+check "a carga gravou 11 usuários da demonstração e 8 Prospectores" \
+  test "$(psql_q "SELECT count(*) FROM users")/$(psql_q "SELECT count(*) FROM prospectors")" = "12/8"
+tls -o "$WORK/index-demo.html" "$BASE/"
+check "com DEMO_INSTANCE=true, o Nginx serve a meta resort-demo com true" test "$(brand_meta "$WORK/index-demo.html" resort-demo)" = "true"
+check "a Portaria da demonstração entra sem troca de senha" \
+  bash -c "grep -q '\"mustChangePassword\":false' <<<'$(demo_login "$WORK/demo.jar" portaria.demo@example.com "$DEMO_GATE_PASSWORD")'"
+STATE_DEMO="$(db_state)"
+demo_script "$WORK/demo-6.log" demo-reset.sh "$DEMO_ENV" "outro.dominio" && status=0 || status=$?
+check "recarga com o domínio errado recusada (saída $status), sem alterar o banco" \
+  bash -c "[ $status = 2 ] && grep -q 'domínio digitado não confere' '$WORK/demo-6.log' && [ '$(db_state)' = '$STATE_DEMO' ]"
+demo_script "$WORK/demo-7.log" demo-reset.sh "$DEMO_ENV" "$DOMAIN" && status=0 || status=$?
+check "recarga de uma instalação de demonstração (saída $status)" \
+  bash -c "[ $status = 0 ] && grep -q 'demo-reset: concluído' '$WORK/demo-7.log'"
+check "depois da recarga, o banco tem de novo só a demonstração e o ADMIN inicial, com a auditoria do zero" \
+  test "$(psql_q "SELECT count(*) FROM users")/$(psql_q "SELECT count(*) FROM audit_logs WHERE metadata ->> 'source' IS DISTINCT FROM 'DEMO'")" = "12/1"
+check "depois da recarga, o ADMIN da demonstração entra" \
+  bash -c "grep -q '\"role\":\"ADMIN\"' <<<'$(demo_login "$WORK/demo.jar" admin.demo@example.com "$DEMO_ADMIN_PASSWORD")'"
+CREATED="$(tls -b "$WORK/demo.jar" -c "$WORK/demo.jar" -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' "$WORK/demo.jar" | tail -1)" \
+  --data '{"name":"Pessoa de Verdade","email":"pessoa@empresa.local","role":"HOST"}' "$BASE/api/users")"
+STATE_WITH_REAL_USER="$(db_state)"
+demo_script "$WORK/demo-8.log" demo-reset.sh "$DEMO_ENV" "$DOMAIN" && status=0 || status=$?
+check "um usuário criado durante a apresentação ($CREATED) faz a recarga recusar (saída $status), sem alterar o banco" \
+  bash -c "[ '$CREATED' = 201 ] && [ $status = 2 ] && [ '$(db_state)' = '$STATE_WITH_REAL_USER' ] && ! grep -q 'pessoa@empresa.local' '$WORK/demo-8.log'"
+if grep -Eq 'demo-(admin|prospector|portaria|anfitriao)-' "$WORK"/demo-*.log; then
+  fail "uma senha da demonstração apareceu na saída dos scripts"
+fi
+
 if [ "$FAILURES" -gt 0 ]; then
   echo "==> $FAILURES verificação(ões) falharam"
   exit 1

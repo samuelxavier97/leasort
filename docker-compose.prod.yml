@@ -165,6 +165,34 @@ services:
     networks: [internal]
     logging: *logging
 
+  # Carga da instalação de demonstração (D-125). Só roda chamada pelo nome, pelos scripts/demo-load.sh e
+  # scripts/demo-reset.sh; recusa sem DEMO_INSTANCE=true e em banco com qualquer dado além do ADMIN inicial.
+  # As senhas dos usuários da demonstração vêm do ambiente do script, nunca do .env.
+  demo-load:
+    image: ${BACKEND_IMAGE:?defina BACKEND_IMAGE}
+    profiles: [demo]
+    entrypoint: ["java", "-cp", "app.jar", "com.resort.platform.demo.DemoLoadMain"]
+    environment:
+      DEMO_INSTANCE: ${DEMO_INSTANCE:-}
+      DB_URL: jdbc:postgresql://postgres:5432/resort
+      DB_USER: resort_app
+      DB_PASSWORD: ${DB_APP_PASSWORD:?defina DB_APP_PASSWORD}
+      APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
+      APP_GATE_NAME: ${APP_GATE_NAME:-PRINCIPAL}
+      APP_BOOTSTRAP_ADMIN_EMAIL: ${APP_BOOTSTRAP_ADMIN_EMAIL:?defina APP_BOOTSTRAP_ADMIN_EMAIL}
+      DEMO_ADMIN_PASSWORD: ${DEMO_ADMIN_PASSWORD:-}
+      DEMO_PROSPECTOR_PASSWORD: ${DEMO_PROSPECTOR_PASSWORD:-}
+      DEMO_GATE_PASSWORD: ${DEMO_GATE_PASSWORD:-}
+      DEMO_HOST_PASSWORD: ${DEMO_HOST_PASSWORD:-}
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=60 -XX:+UseSerialGC
+    depends_on:
+      postgres:
+        condition: service_healthy
+    mem_limit: 384m
+    restart: "no"
+    networks: [internal]
+    logging: *logging
+
   # Renovação dos certificados do Let's Encrypt a cada 12 h (D-109). Só com COMPOSE_PROFILES=letsencrypt;
   # a primeira emissão é feita com scripts/issue-cert.sh.
   certbot:

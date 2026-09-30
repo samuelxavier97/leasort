@@ -1,6 +1,6 @@
 # Runbook de produção
 
-Como colocar e manter o sistema numa VPS: preparar o servidor, fazer o primeiro deploy, atualizar, voltar versão, fazer backup e restaurar. As decisões por trás de cada passo estão em `docs/DECISIONS.md` (D-057, D-059, D-087, D-105 a D-112).
+Como colocar e manter o sistema numa VPS: preparar o servidor, fazer o primeiro deploy, atualizar, voltar versão, fazer backup e restaurar, e montar uma instalação de demonstração. As decisões por trás de cada passo estão em `docs/DECISIONS.md` (D-057, D-059, D-087, D-105 a D-112, D-125).
 
 Os comandos supõem Ubuntu Server 24.04 LTS, uma VPS de 2 GB (ou 1 GB com swap, ver D-105) e o repositório clonado em `/opt/resort`. Nenhum valor real (domínio, e-mail, senhas, nome do cliente) entra no repositório: eles ficam só no `/opt/resort/.env.prod` do servidor e com o operador.
 
@@ -332,3 +332,42 @@ Se o backup não voltar no mesmo dia, trate como incidente: até resolver, qualq
   - a cópia externa está em dia.
 - **Mensal:** `docker system df` para ver o espaço em disco; apague imagens antigas com `docker image prune`, sem `-a`, para manter a versão anterior disponível para volta.
 - **Certificado:** renovação automática pelo `certbot`, antes do vencimento. Confira a validade de vez em quando com `curl -vI https://<domínio> 2>&1 | grep expire`.
+
+## 14. Instalação de demonstração
+
+Uma instalação só para apresentar o sistema, com dados fictícios (D-125). Nunca na produção de um cliente.
+
+**Preparar.** Faça o primeiro deploy normalmente (seção 7), com `DEMO_INSTANCE=true` no `.env.prod`. Com ela, o rodapé de todas as telas mostra "Ambiente de demonstração". O backend precisa ter subido uma vez, porque é ele que cria o ADMIN inicial.
+
+**Carregar.** Com a pilha no ar e o banco só com o ADMIN inicial:
+
+```bash
+cd /opt/resort && scripts/demo-load.sh .env.prod
+```
+
+- O script pede, sem eco, as senhas dos quatro usuários da demonstração. Elas não ficam em arquivo.
+- A carga recusa, sem gravar nada, se o `.env.prod` não tiver `DEMO_INSTANCE=true` ou se o banco tiver qualquer dado além do ADMIN inicial.
+- No fim, mostra os totais gravados e os usuários: `admin.demo@example.com`, `prospector.demo@example.com`, `portaria.demo@example.com` e `anfitriao.demo@example.com`. Nenhum tem troca de senha obrigatória.
+- O ADMIN inicial continua sendo o do operador.
+
+**O que a carga cria.** Relativo ao dia da carga:
+- 7 semanas de histórico e 10 dias à frente, com em média 3 visitas por dia de segunda a sexta e 11 no sábado e no domingo;
+- 8 Prospectores com desempenhos diferentes;
+- visitas realizadas, sem comparecimento e canceladas;
+- negativas na Portaria com os cinco motivos;
+- 2 visitas para hoje, uma delas com acompanhantes.
+
+Leads e acompanhantes não têm CPF, os telefones usam o DDD 00 e os e-mails são de `example.com`.
+
+**Recarregar antes de cada apresentação.** As visitas de hoje só valem no dia da carga: o job das 00:15 marca como não comparecidas as que ficaram agendadas. No dia da apresentação:
+
+```bash
+cd /opt/resort && scripts/demo-reset.sh .env.prod
+```
+
+A recarga **apaga o banco inteiro** e carrega a demonstração de novo. Antes de tocar em qualquer coisa:
+1. confere `DEMO_INSTANCE=true` no `.env.prod`;
+2. confere que todos os usuários do banco são os da demonstração ou o ADMIN inicial (`APP_BOOTSTRAP_ADMIN_EMAIL`);
+3. pede as senhas e o domínio digitado.
+
+Com um único usuário de fora, ela recusa sem apagar nada. Isso inclui um usuário criado pela tela de Usuários durante uma apresentação. Nesse caso, a recarga passa a ser manual: recrie o banco como no passo 3 do `scripts/restore.sh` e rode o `scripts/demo-load.sh`. Por isso, evite criar usuários durante a apresentação; para mostrar a tela, cancele no fim do formulário. O volume de backups não é tocado.
