@@ -30,7 +30,7 @@ export function InvitationsPage() {
         <Label htmlFor="invitation-status-filter">Status</Label>
         <select
           id="invitation-status-filter"
-          className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm"
           value={status}
           onChange={(event) => {
             setStatus(event.target.value as InvitationStatus | '')

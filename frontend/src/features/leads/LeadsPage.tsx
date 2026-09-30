@@ -100,7 +100,7 @@ export function LeadsPage() {
           <Label htmlFor="lead-status-filter">Status</Label>
           <select
             id="lead-status-filter"
-            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm"
             value={filters.status ?? ''}
             onChange={(event) =>
               setFilters((current) => ({ ...current, page: 0, status: event.target.value as LeadStatus | '' }))
@@ -119,7 +119,7 @@ export function LeadsPage() {
             <Label htmlFor="lead-prospector-filter">Prospector</Label>
             <select
               id="lead-prospector-filter"
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               value={filters.unassigned ? UNASSIGNED : (filters.prospectorId ?? '')}
               onChange={(event) => {
                 const value = event.target.value
@@ -150,7 +150,7 @@ export function LeadsPage() {
             <Label htmlFor="assign-prospector">Atribuir a</Label>
             <select
               id="assign-prospector"
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               value={assignTo}
               onChange={(event) => setAssignTo(event.target.value)}
             >

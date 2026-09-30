@@ -64,7 +64,7 @@ export function VisitsPage({ view }: { view: VisitsView }) {
             <Label htmlFor="visit-status-filter">Status</Label>
             <select
               id="visit-status-filter"
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               value={status}
               onChange={(event) => {
                 setStatus(event.target.value as VisitStatus | '')
@@ -83,7 +83,7 @@ export function VisitsPage({ view }: { view: VisitsView }) {
             <Label htmlFor="visit-prospector-filter">Prospector</Label>
             <select
               id="visit-prospector-filter"
-              className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+              className="h-9 rounded-md border border-input bg-background px-3 text-sm"
               value={prospectorId}
               onChange={(event) => {
                 setProspectorId(event.target.value)

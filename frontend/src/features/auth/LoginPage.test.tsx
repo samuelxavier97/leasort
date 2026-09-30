@@ -117,10 +117,18 @@ describe('LoginPage', () => {
       expect(within(box).getByRole('img')).toHaveAccessibleName('Logotipo do Resort')
     })
 
-    it('o rodapé traz o Resortric com qualquer tema', async () => {
+    it('o rodapé traz o Resortric com qualquer tema; com tema de cliente, sem dourado (D-126)', async () => {
       setBrand({ name: RESORT, logo: '/brand/logo.png' })
       await identity()
-      expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
+      expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric-mono.svg')
+    })
+
+    it('a linha curta de detalhe fica sob a identidade, na cor de --brand-accent (D-126)', async () => {
+      const box = await identity()
+      const accent = within(box).getByTestId('auth-accent')
+      expect(accent).toHaveClass('bg-brand-accent')
+      expect(accent).toHaveAttribute('aria-hidden', 'true')
+      expect(screen.getByTestId('brand-stripe')).toBeInTheDocument()
     })
 
     it('instalação de demonstração: o rodapé do login mostra a etiqueta; sem ela, nada (D-125)', async () => {

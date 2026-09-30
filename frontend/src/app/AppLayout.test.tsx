@@ -90,12 +90,26 @@ describe('AppLayout — identidade do cliente (D-117)', () => {
     expect(within(identity as HTMLElement).getByRole('img')).toHaveAccessibleName('Logotipo do Resort')
   })
 
-  it('L5: o rodapé traz o Resortric com qualquer tema', async () => {
-    setBrand({ name: RESORT, logo: '/brand/logo.png' })
+  it.each([
+    ['sem tema', {}, '/resortric.svg'],
+    ['só com RESORT_NAME', { name: RESORT }, '/resortric.svg'],
+    ['com cor de cliente', { name: RESORT, color: '#1e3a5f' }, '/resortric-mono.svg'],
+    ['com logotipo', { name: RESORT, logo: '/brand/logo.png' }, '/resortric-mono.svg'],
+  ])('L5: o rodapé traz o Resortric com qualquer tema, sem dourado com tema de cliente (D-126): %s', async (_case, theme, src) => {
+    setBrand(theme)
     mockAdmin()
     renderApp('/usuarios')
     await headerIdentity()
-    expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
+    expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', src)
+  })
+
+  it('L9: a faixa do topo termina no trecho de detalhe (--brand-accent), que é o dourado só sem tema de cliente (D-126)', async () => {
+    mockAdmin()
+    renderApp('/usuarios')
+    await headerIdentity()
+    const stripe = screen.getByTestId('brand-stripe')
+    expect(stripe).toHaveClass('h-1', 'bg-primary', 'print:hidden')
+    expect(stripe.firstElementChild).toHaveClass('bg-brand-accent')
   })
 
   it('L7: numa instalação de demonstração, o rodapé mostra a etiqueta ao lado do Resortric (D-125)', async () => {
@@ -142,7 +156,7 @@ describe('AppLayout — identidade do cliente (D-117)', () => {
     const menu = screen.getByRole('navigation', { name: 'Menu principal' })
     const active = within(menu).getByRole('link', { name: 'Usuários' })
     expect(active).toHaveAttribute('aria-current', 'page')
-    expect(active).toHaveClass('bg-muted', 'font-semibold', 'border-primary-edge')
+    expect(active).toHaveClass('bg-soft-strong', 'font-semibold', 'border-primary-edge')
     const inactive = within(menu).getByRole('link', { name: 'Leads' })
     expect(inactive).not.toHaveClass('font-semibold')
     expect(inactive).not.toHaveClass('border-primary-edge')

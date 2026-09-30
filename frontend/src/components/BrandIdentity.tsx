@@ -1,4 +1,4 @@
-import { currentBrand, PRODUCT_LOGO_URL, PRODUCT_NAME, type Brand } from '@/lib/brand'
+import { currentBrand, PRODUCT_NAME, productLogoUrl, type Brand } from '@/lib/brand'
 import { cn } from '@/lib/utils'
 
 const SIZES = {
@@ -10,7 +10,8 @@ const SIZES = {
 
 /**
  * Identidade do cliente (D-117): o logotipo, se houver; senão, `RESORT_NAME` em texto; senão, o
- * logotipo do Resortric. O logotipo entra só por `<img>`, nunca inline (D-119).
+ * logotipo do Resortric (sem dourado se houver cor de cliente, D-126). O logotipo entra só por `<img>`,
+ * nunca inline (D-119).
  */
 export function BrandIdentity({ brand = currentBrand(), size = 'header' }: { brand?: Brand; size?: keyof typeof SIZES }) {
   const classes = SIZES[size]
@@ -26,5 +27,5 @@ export function BrandIdentity({ brand = currentBrand(), size = 'header' }: { bra
   if (brand.resortName) {
     return <span className={classes.name}>{brand.resortName}</span>
   }
-  return <img src={PRODUCT_LOGO_URL} alt={PRODUCT_NAME} className={cn('w-auto', classes.product)} />
+  return <img src={productLogoUrl(brand)} alt={PRODUCT_NAME} className={cn('w-auto', classes.product)} />
 }

@@ -128,7 +128,7 @@ function ExportCard({ block, prospectors }: { block: ExportBlock; prospectors: P
               <Label htmlFor={id('status')}>{block.statusLabel}</Label>
               <select
                 id={id('status')}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               >
@@ -144,7 +144,7 @@ function ExportCard({ block, prospectors }: { block: ExportBlock; prospectors: P
               <Label htmlFor={id('prospector')}>Prospector</Label>
               <select
                 id={id('prospector')}
-                className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={prospectorId}
                 onChange={(e) => setProspectorId(e.target.value)}
               >

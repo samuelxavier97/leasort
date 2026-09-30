@@ -57,7 +57,7 @@ export function CompanionFields() {
                 <Label htmlFor={`${prefix}-relationship`}>Parentesco do acompanhante {number}</Label>
                 <select
                   id={`${prefix}-relationship`}
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
                   aria-invalid={!!fieldErrors?.relationship}
                   aria-describedby={`${prefix}-relationship-error`}
                   {...register(`companions.${index}.relationship`)}

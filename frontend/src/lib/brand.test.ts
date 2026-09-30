@@ -9,10 +9,18 @@ import {
   DEMO_LABEL,
   documentTitle,
   EDGE_CONTRAST,
+  faviconUrl,
+  hasClientTheme,
   isDemoInstance,
+  PRODUCT_GOLD,
+  PRODUCT_LOGO_MONO_URL,
+  PRODUCT_LOGO_URL,
   PRODUCT_NAME,
+  productLogoUrl,
   readBrand,
+  SAND,
   TEXT_CONTRAST,
+  type Brand,
 } from './brand'
 
 /** Documento como o que o Nginx entrega, com as metas já preenchidas (o nome escapado para HTML). */
@@ -22,9 +30,21 @@ function page(metaTags: string): Document {
 
 const tag = (name: string, content: string) => `<meta name="${name}" content="${content}" />`
 
+/** Texto e texto secundário fixos do index.css (D-126, D-127). */
+const FOREGROUND = '#1c1917'
+const MUTED_FOREGROUND = '#57534e'
+
+const brand = (overrides: Partial<Brand> = {}): Brand => ({
+  resortName: null,
+  color: DEFAULT_BRAND_COLOR,
+  logoUrl: null,
+  customColor: false,
+  ...overrides,
+})
+
 describe('readBrand — metas do tema (D-115)', () => {
   it('B1: sem metas, ou com as metas vazias, vale a identidade do Resortric', () => {
-    const expected = { resortName: null, color: DEFAULT_BRAND_COLOR, logoUrl: null }
+    const expected = { resortName: null, color: DEFAULT_BRAND_COLOR, logoUrl: null, customColor: false }
     expect(readBrand(page(''))).toEqual(expected)
     expect(
       readBrand(page(tag('resort-name', '  ') + tag('resort-brand-color', '') + tag('resort-brand-logo', ''))),
@@ -39,11 +59,11 @@ describe('readBrand — metas do tema (D-115)', () => {
     expect(doc.querySelectorAll('script')).toHaveLength(0)
   })
 
-  it('B3: a cor aceita só #RRGGBB, em minúsculas; o resto vale a padrão', () => {
-    expect(readBrand(page(tag('resort-brand-color', '#1E3A5F'))).color).toBe('#1e3a5f')
-    expect(readBrand(page(tag('resort-brand-color', ' #f5d90a '))).color).toBe('#f5d90a')
+  it('B3: a cor aceita só #RRGGBB, em minúsculas; o resto vale a padrão e não conta como cor informada', () => {
+    expect(readBrand(page(tag('resort-brand-color', '#1E3A5F')))).toMatchObject({ color: '#1e3a5f', customColor: true })
+    expect(readBrand(page(tag('resort-brand-color', ' #f5d90a ')))).toMatchObject({ color: '#f5d90a', customColor: true })
     for (const invalid of ['#fff', 'red', 'rgb(0, 0, 0)', '#12345g', '#000000;x:y', '1e3a5f', '#1e3a5f00', 'url(x)']) {
-      expect(readBrand(page(tag('resort-brand-color', invalid))).color, invalid).toBe(DEFAULT_BRAND_COLOR)
+      expect(readBrand(page(tag('resort-brand-color', invalid))), invalid).toMatchObject({ color: DEFAULT_BRAND_COLOR, customColor: false })
     }
   })
 
@@ -120,17 +140,17 @@ describe('contraste da cor principal (D-118)', () => {
     expect(contrastRatio(light.hover, '#000000')).toBeGreaterThan(contrastRatio(light.primary, '#000000'))
   })
 
-  it('B9: cor com menos de 3:1 contra o branco ganha a borda escurecida até 3:1; as demais usam a própria cor', () => {
+  it('B9: cor com menos de 3:1 contra o branco ou o fundo do item ativo ganha a borda escurecida; as demais usam a própria cor', () => {
     expect(brandPalette('#1f4e79').edge).toBe('#1f4e79')
     const light = brandPalette('#f5d90a')
     expect(contrastRatio('#f5d90a', '#ffffff')).toBeLessThan(EDGE_CONTRAST)
     expect(light.edge).not.toBe('#f5d90a')
     expect(contrastRatio(light.edge, '#ffffff')).toBeGreaterThanOrEqual(EDGE_CONTRAST)
-    // Contra o fundo do item ativo do menu (bg-muted sobre o branco, ~#f5f5f5), a linha ainda aparece.
-    expect(contrastRatio(light.edge, '#f5f5f5')).toBeGreaterThanOrEqual(2.5)
+    // A linha do item ativo fica sobre o fundo de 14% (D-127) e continua com 3:1.
+    expect(contrastRatio(light.edge, light.softStrong)).toBeGreaterThanOrEqual(EDGE_CONTRAST)
   })
 
-  it('B10: varredura de 4.096 cores: texto, hover e borda sempre atingem os mínimos', () => {
+  it('B10: varredura de 4.096 cores: texto, hover, borda e texto sobre o tingimento sempre atingem os mínimos', () => {
     const levels = Array.from({ length: 16 }, (_, index) => (index * 17).toString(16).padStart(2, '0'))
     let checked = 0
     for (const r of levels) {
@@ -142,6 +162,12 @@ describe('contraste da cor principal (D-118)', () => {
           expect(base, color).toBeGreaterThanOrEqual(TEXT_CONTRAST)
           expect(contrastRatio(palette.hover, palette.foreground), color).toBeGreaterThanOrEqual(base)
           expect(contrastRatio(palette.edge, '#ffffff'), color).toBeGreaterThanOrEqual(EDGE_CONTRAST)
+          expect(contrastRatio(palette.edge, palette.softStrong), color).toBeGreaterThanOrEqual(EDGE_CONTRAST)
+          // Texto e texto secundário (D-127) sobre o fundo e as superfícies tingidas.
+          for (const surface of [palette.page, palette.soft, palette.softStrong]) {
+            expect(contrastRatio(FOREGROUND, surface), `${color} ${surface}`).toBeGreaterThanOrEqual(TEXT_CONTRAST)
+            expect(contrastRatio(MUTED_FOREGROUND, surface), `${color} ${surface}`).toBeGreaterThanOrEqual(TEXT_CONTRAST)
+          }
           checked++
         }
       }
@@ -151,12 +177,17 @@ describe('contraste da cor principal (D-118)', () => {
 
   it('B11: applyBrand escreve as variáveis no :root por CSSOM, sem criar <style>', () => {
     const styles = document.querySelectorAll('style').length
-    applyBrand(document.documentElement, { resortName: null, color: '#f5d90a', logoUrl: null })
+    applyBrand(document.documentElement, brand({ color: '#f5d90a', customColor: true }))
     const root = document.documentElement.style
+    const palette = brandPalette('#f5d90a')
     expect(root.getPropertyValue('--primary')).toBe('#f5d90a')
     expect(root.getPropertyValue('--primary-foreground')).toBe('#000000')
-    expect(root.getPropertyValue('--primary-hover')).toBe(brandPalette('#f5d90a').hover)
-    expect(root.getPropertyValue('--primary-edge')).toBe(brandPalette('#f5d90a').edge)
+    expect(root.getPropertyValue('--primary-hover')).toBe(palette.hover)
+    expect(root.getPropertyValue('--primary-edge')).toBe(palette.edge)
+    expect(root.getPropertyValue('--page')).toBe(palette.page)
+    expect(root.getPropertyValue('--soft-strong')).toBe(palette.softStrong)
+    for (const name of ['--muted', '--accent', '--secondary']) expect(root.getPropertyValue(name), name).toBe(palette.soft)
+    for (const name of ['--border', '--input']) expect(root.getPropertyValue(name), name).toBe(palette.border)
     expect(document.querySelectorAll('style')).toHaveLength(styles)
   })
 
@@ -164,5 +195,51 @@ describe('contraste da cor principal (D-118)', () => {
     const classes = buttonVariants().split(' ')
     expect(classes).toEqual(expect.arrayContaining(['bg-primary', 'text-primary-foreground', 'hover:bg-primary-hover', 'border-primary-edge']))
     expect(classes.filter((name) => name.includes('primary/'))).toEqual([])
+  })
+
+  it('B14: tingimento pela cor principal (D-127): areia com 3,5%, superfícies com 7% e 14%, borda com 12%', () => {
+    const palette = brandPalette(DEFAULT_BRAND_COLOR)
+    expect(SAND).toBe('#faf8f4')
+    expect(palette).toMatchObject({ page: '#f2f2f0', soft: '#ebeceb', softStrong: '#dbe0e3', border: '#cfd3d7' })
+    // Uma cor clara quase não escurece o fundo; a areia continua a base.
+    expect(brandPalette('#f5d90a')).toMatchObject({ page: '#faf7ec', softStrong: '#f9f4d3' })
+    // Os valores iniciais do index.css são os da cor padrão.
+    expect(contrastRatio(MUTED_FOREGROUND, '#ffffff')).toBeGreaterThan(7.5)
+  })
+})
+
+describe('dourado e tema de cliente (D-126)', () => {
+  it('B15: tema de cliente é BRAND_COLOR ou logotipo; só RESORT_NAME não é', () => {
+    expect(hasClientTheme(brand())).toBe(false)
+    expect(hasClientTheme(brand({ resortName: 'Resort Fictício das Águas' }))).toBe(false)
+    expect(hasClientTheme(brand({ color: '#1e3a5f', customColor: true }))).toBe(true)
+    // A mesma cor do Resortric, informada no BRAND_COLOR, é tema de cliente.
+    expect(hasClientTheme(readBrand(page(tag('resort-brand-color', DEFAULT_BRAND_COLOR))))).toBe(true)
+    expect(hasClientTheme(brand({ logoUrl: '/brand/logo.png' }))).toBe(true)
+  })
+
+  it('B16: sem tema de cliente, o dourado, o logotipo e o favicon do Resortric; com tema, as versões sem dourado', () => {
+    expect(PRODUCT_GOLD).toBe('#b08d57')
+    expect(contrastRatio(PRODUCT_GOLD, '#ffffff')).toBeLessThan(TEXT_CONTRAST) // só decorativo, nunca texto
+    const icon = document.createElement('link')
+    icon.rel = 'icon'
+    icon.href = '/favicon.svg'
+    document.head.append(icon)
+    const root = document.documentElement
+
+    for (const product of [brand(), brand({ resortName: 'Resort Fictício das Águas' })]) {
+      applyBrand(root, product)
+      expect(root.style.getPropertyValue('--brand-accent')).toBe(PRODUCT_GOLD)
+      expect(icon.getAttribute('href')).toBe('/favicon.svg')
+      expect(productLogoUrl(product)).toBe(PRODUCT_LOGO_URL)
+      expect(faviconUrl(product)).toBe('/favicon.svg')
+    }
+    for (const client of [brand({ color: '#1e3a5f', customColor: true }), brand({ logoUrl: '/brand/logo.png' })]) {
+      applyBrand(root, client)
+      expect(root.style.getPropertyValue('--brand-accent')).toBe(client.color)
+      expect(icon.getAttribute('href')).toBe('/favicon-mono.svg')
+      expect(productLogoUrl(client)).toBe(PRODUCT_LOGO_MONO_URL)
+    }
+    icon.remove()
   })
 })
