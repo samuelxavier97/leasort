@@ -98,6 +98,28 @@ describe('AppLayout — identidade do cliente (D-117)', () => {
     expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
   })
 
+  it('L7: numa instalação de demonstração, o rodapé mostra a etiqueta ao lado do Resortric (D-125)', async () => {
+    setBrand({ name: RESORT, demo: 'true' })
+    mockAdmin()
+    renderApp('/usuarios')
+    await headerIdentity()
+    const footer = screen.getByRole('contentinfo')
+    expect(within(footer).getByRole('img', { name: 'Resortric' })).toBeInTheDocument()
+    expect(within(footer).getByText('Ambiente de demonstração')).toBeInTheDocument()
+    // Fora do rodapé, a etiqueta não aparece; o rodapé some na impressão.
+    expect(screen.getAllByText('Ambiente de demonstração')).toHaveLength(1)
+    expect(footer).toHaveClass('print:hidden')
+  })
+
+  it.each([undefined, '', 'false', 'TRUE'])('L8: sem a meta resort-demo igual a "true" (%s), nenhuma etiqueta', async (demo) => {
+    setBrand({ demo })
+    mockAdmin()
+    renderApp('/usuarios')
+    await headerIdentity()
+    expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toBeInTheDocument()
+    expect(screen.queryByText('Ambiente de demonstração')).not.toBeInTheDocument()
+  })
+
   it('L6: título da aba por tela: "Tela · RESORT_NAME", ou "Tela · Resortric" sem o nome', async () => {
     mockAdmin()
     const { unmount } = renderApp('/usuarios')

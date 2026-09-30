@@ -948,7 +948,7 @@ login → agendar visita com acompanhantes → ver convite
 9. **Exportações e tela de auditoria.**
 10. **E2E e revisão de testes.**
 11. **Produção:** imagens, Nginx, HTTPS, variáveis, backup, logs.
-12. **Acabamento visual e tema por cliente:** identidade padrão do Resortric, cor principal e logotipo do cliente injetados na subida, tela de login e consistência entre telas. Executada antes da parte 11b, o deploy real (D-114).
+12. **Acabamento visual e tema por cliente:** identidade padrão do Resortric, cor principal e logotipo do cliente injetados na subida, tela de login, consistência entre telas e carga de demonstração (D-125). Executada antes da parte 11b, o deploy real (D-114).
 
 Cada fase termina com build e testes passando.
 

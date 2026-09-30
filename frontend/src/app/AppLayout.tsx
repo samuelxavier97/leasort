@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Menu } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { BrandIdentity } from '@/components/BrandIdentity'
+import { ProductFooter } from '@/components/ProductFooter'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -13,7 +14,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { logout, meQueryKey } from '@/features/auth/api'
 import { useMe } from '@/features/auth/useMe'
-import { PRODUCT_LOGO_URL, PRODUCT_NAME } from '@/lib/brand'
 import { cn } from '@/lib/utils'
 import { NAV_ITEMS, ROLE_LABELS, screenTitle } from './navigation'
 import { useDocumentTitle } from './useDocumentTitle'
@@ -122,9 +122,7 @@ export function AppLayout() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6 print:max-w-none print:p-0">
         <Outlet />
       </main>
-      <footer className="flex justify-center px-4 py-4 print:hidden">
-        <img src={PRODUCT_LOGO_URL} alt={PRODUCT_NAME} className="h-4 w-auto opacity-70" />
-      </footer>
+      <ProductFooter className="print:hidden" />
     </div>
   )
 }

@@ -1,10 +1,10 @@
 import type { ReactNode } from 'react'
-import { PRODUCT_LOGO_URL, PRODUCT_NAME } from '@/lib/brand'
 import { BrandIdentity } from './BrandIdentity'
+import { ProductFooter } from './ProductFooter'
 
 /**
  * Moldura do login e da troca de senha (D-121): faixa na cor principal, a identidade do cliente em
- * destaque (D-117), o cartão do formulário e o Resortric no rodapé.
+ * destaque (D-117), o cartão do formulário e o rodapé com o Resortric.
  */
 export function AuthShell({ children }: { children: ReactNode }) {
   return (
@@ -19,9 +19,7 @@ export function AuthShell({ children }: { children: ReactNode }) {
           {children}
         </div>
       </main>
-      <footer className="flex justify-center px-4 py-4">
-        <img src={PRODUCT_LOGO_URL} alt={PRODUCT_NAME} className="h-4 w-auto opacity-70" />
-      </footer>
+      <ProductFooter />
     </div>
   )
 }

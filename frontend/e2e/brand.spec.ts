@@ -89,3 +89,28 @@ test('E7e: login com o tema: o logotipo em destaque, a faixa na cor principal e 
   expect(contrast(button.background, button.color)).toBeGreaterThanOrEqual(4.5)
 })
 
+
+/**
+ * E7f: instalação de demonstração (D-125). Com a meta resort-demo, como o Nginx a preenche com
+ * DEMO_INSTANCE=true, o rodapé do login e o das telas mostram "Ambiente de demonstração" ao lado do
+ * Resortric; sem ela, nenhuma etiqueta.
+ */
+test('E7f: instalação de demonstração: a etiqueta no rodapé do login e das telas; sem ela, nada', async ({ world }) => {
+  const context = await world.newContext('ADMIN')
+  await applyTheme(context, { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: true, demo: true })
+  const page = await context.newPage()
+  await page.goto('/login')
+  const loginFooter = page.getByRole('contentinfo')
+  await expect(loginFooter.getByRole('img', { name: 'Resortric' })).toBeVisible()
+  await expect(loginFooter.getByText('Ambiente de demonstração')).toBeVisible()
+  const { email, password } = adminCredentials()
+  await login(page, email, password)
+  await expect(page).toHaveURL('/dashboard')
+  const footer = page.getByRole('contentinfo')
+  await expect(footer.getByRole('img', { name: 'Resortric' })).toBeVisible()
+  await expect(footer.getByText('Ambiente de demonstração')).toBeVisible()
+
+  const plain = await adminWithTheme(world, { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: true })
+  await expect(plain.getByRole('contentinfo').getByRole('img', { name: 'Resortric' })).toBeVisible()
+  await expect(plain.getByText('Ambiente de demonstração')).toHaveCount(0)
+})
