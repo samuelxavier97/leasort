@@ -31,6 +31,13 @@ public class HttpBrowser {
         return send(builder, true);
     }
 
+    public HttpResponse<String> put(String path, String json) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path))
+                .header("Content-Type", "application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(json));
+        return send(builder, true);
+    }
+
     public HttpResponse<String> patch(String path, String json) throws Exception {
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(baseUrl + path))
                 .header("Content-Type", "application/json")

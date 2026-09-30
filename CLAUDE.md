@@ -70,6 +70,8 @@ cd frontend && npm test                # Vitest
 ./scripts/e2e.sh                       # E2E com Playwright: banco descartável, jar (dev) e vite preview (D-104)
 ./scripts/prod-check.sh                # pilha de produção local por HTTPS, verificada por fora, com o E2E (D-105)
 ./scripts/restore.sh <.env> <backup> <chave>  # restauração de backup (D-110; ver docs/DEPLOY.md)
+./scripts/demo-load.sh <.env>          # carga de demonstração, só com DEMO_INSTANCE=true (D-125; docs/DEPLOY.md, seção 14)
+./scripts/demo-reset.sh <.env>         # recarga da demonstração: apaga o banco, só com usuários da demonstração (D-125)
 ```
 
 Health: `GET http://localhost:8080/actuator/health` → `{"status":"UP"}`.
