@@ -295,6 +295,27 @@ describe('C5 a C7 — imagem de compartilhamento', () => {
     expect(everything).not.toMatch(/Acompanhante|Prospector Fictício/)
   })
 
+  it('C5b: numa instalação de demonstração, a imagem do convite não traz a etiqueta (D-125)', async () => {
+    setBrand({ demo: 'true' })
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    mockInvitation('PROSPECTOR', invitation)
+    const user = userEvent.setup()
+    renderApp('/convites/i-1')
+
+    await screen.findByRole('img', { name: 'QR Code do convite' })
+    await user.click(screen.getByRole('button', { name: 'Baixar' }))
+    await waitFor(() => expect(drawnTexts).toContain('Apresente este código na portaria'))
+    expect(drawnTexts).toEqual([
+      PRODUCT_NAME,
+      'Convite de visita',
+      'Maria Fictícia',
+      'Visita em 30/09/2026',
+      invitation.formattedCode,
+      'Apresente este código na portaria',
+    ])
+    expect(drawnTexts.join('\n')).not.toMatch(/demonstra/i)
+  })
+
   it('C6: com a Web Share API, compartilha o PNG; cancelar não mostra erro', async () => {
     const shared: ShareData[] = []
     let cancel = false

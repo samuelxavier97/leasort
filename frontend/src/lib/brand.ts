@@ -40,6 +40,17 @@ export function readBrand(doc: Document = document): Brand {
   }
 }
 
+/** Etiqueta do rodapé numa instalação de demonstração (D-125). */
+export const DEMO_LABEL = 'Ambiente de demonstração'
+
+/**
+ * Instalação de demonstração (D-125): a meta `resort-demo` é "true" quando o Nginx sobe com
+ * `DEMO_INSTANCE=true`. Qualquer outro valor não liga a etiqueta.
+ */
+export function isDemoInstance(doc: Document = document): boolean {
+  return meta(doc, 'resort-demo') === 'true'
+}
+
 /** Tema da página atual; lido a cada chamada, porque as metas não mudam depois da subida. */
 export function currentBrand(): Brand {
   return readBrand(document)

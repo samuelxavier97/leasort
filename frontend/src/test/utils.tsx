@@ -69,13 +69,15 @@ export function renderApp(path: string) {
 
 /**
  * Metas do tema como o Nginx as preenche (D-115): só as informadas. O tema fictício dos testes é o
- * "Resort Fictício das Águas"; o setup remove as metas depois de cada teste.
+ * "Resort Fictício das Águas"; o setup remove as metas depois de cada teste. `demo` é o conteúdo da
+ * meta da instalação de demonstração (D-125).
  */
-export function setBrand(values: { name?: string; color?: string; logo?: string }) {
+export function setBrand(values: { name?: string; color?: string; logo?: string; demo?: string }) {
   const entries: [string, string | undefined][] = [
     ['resort-name', values.name],
     ['resort-brand-color', values.color],
     ['resort-brand-logo', values.logo],
+    ['resort-demo', values.demo],
   ]
   for (const [name, content] of entries) {
     if (content === undefined) continue

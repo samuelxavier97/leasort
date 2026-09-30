@@ -475,6 +475,24 @@ cp "$BRAND_LOGO_FIXTURE" "$WORK/brand/logo.png"
 compose restart nginx >/dev/null 2>&1
 wait_healthy nginx || exit 1
 
+echo "==> Etiqueta da instalação de demonstração (D-125)"
+check "na pilha, sem DEMO_INSTANCE, a meta resort-demo fica vazia" test "$(brand_meta "$WORK/index.html" resort-demo)" = ""
+demo_run() { # demo_run <DEMO_INSTANCE>: os scripts da subida, fora da pilha; a meta ou o erro
+  docker run --rm -e "DEMO_INSTANCE=$1" --entrypoint sh "$NGINX_IMAGE" -c \
+    '/docker-entrypoint.d/40-resort-name.sh && /docker-entrypoint.d/42-resort-demo.sh && grep -o "<meta name=\"resort-demo\"[^>]*>" /usr/share/nginx/html/index.html' 2>&1
+}
+check "DEMO_INSTANCE=true preenche a meta resort-demo" test "$(demo_run true)" = '<meta name="resort-demo" content="true" />'
+check "DEMO_INSTANCE=false deixa a meta vazia" test "$(demo_run false)" = '<meta name="resort-demo" content="" />'
+check "DEMO_INSTANCE vazia deixa a meta vazia" test "$(demo_run '')" = '<meta name="resort-demo" content="" />'
+for value in TRUE True 1 yes 'true ' $'true\nx'; do
+  output="$(demo_run "$value")" && status=0 || status=$?
+  check "DEMO_INSTANCE=$(printf '%q' "$value") recusada, com o motivo" \
+    bash -c "[ $status != 0 ] && grep -q 'DEMO_INSTANCE inválida' <<<$(printf '%q' "$output")"
+done
+DEMO_START="$(timeout 60 docker run --rm -e DEMO_INSTANCE=yes -e DOMAIN=localhost "$NGINX_IMAGE" 2>&1)" && DEMO_STATUS=0 || DEMO_STATUS=$?
+check "a subida completa do container para com DEMO_INSTANCE inválida, com o motivo no log" \
+  bash -c "[ $DEMO_STATUS != 0 ] && [ $DEMO_STATUS != 124 ] && grep -q 'DEMO_INSTANCE inválida' <<<$(printf '%q' "$DEMO_START")"
+
 echo "==> Memória"
 HEAP_MB="$(compose exec -T backend java -XX:+PrintFlagsFinal -version 2>/dev/null | awk '$2 == "MaxHeapSize" { printf "%d", $4 / 1048576 }')"
 check "heap máximo da JVM em 60% do limite de 768 MB (${HEAP_MB} MB)" test "$HEAP_MB" -ge 440 -a "$HEAP_MB" -le 470

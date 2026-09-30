@@ -122,5 +122,16 @@ describe('LoginPage', () => {
       await identity()
       expect(within(screen.getByRole('contentinfo')).getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
     })
+
+    it('instalação de demonstração: o rodapé do login mostra a etiqueta; sem ela, nada (D-125)', async () => {
+      setBrand({ demo: 'true' })
+      await identity()
+      expect(within(screen.getByRole('contentinfo')).getByText('Ambiente de demonstração')).toBeInTheDocument()
+    })
+
+    it('sem instalação de demonstração, o login não mostra a etiqueta', async () => {
+      await identity()
+      expect(screen.queryByText('Ambiente de demonstração')).not.toBeInTheDocument()
+    })
   })
 })

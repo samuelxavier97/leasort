@@ -6,8 +6,10 @@ import {
   brandPalette,
   contrastRatio,
   DEFAULT_BRAND_COLOR,
+  DEMO_LABEL,
   documentTitle,
   EDGE_CONTRAST,
+  isDemoInstance,
   PRODUCT_NAME,
   readBrand,
   TEXT_CONTRAST,
@@ -68,6 +70,18 @@ describe('readBrand — metas do tema (D-115)', () => {
     expect(documentTitle('Leads', none)).toBe('Leads · Resortric')
     expect(documentTitle('Leads', named)).toBe('Leads · Resort Fictício das Águas')
     expect(documentTitle(null, named)).toBe('Resort Fictício das Águas')
+  })
+})
+
+describe('isDemoInstance — instalação de demonstração (D-125)', () => {
+  it('B13: só a meta resort-demo igual a "true" liga a etiqueta', () => {
+    expect(DEMO_LABEL).toBe('Ambiente de demonstração')
+    expect(isDemoInstance(page(tag('resort-demo', 'true')))).toBe(true)
+    expect(isDemoInstance(page(tag('resort-demo', ' true ')))).toBe(true)
+    expect(isDemoInstance(page(''))).toBe(false)
+    for (const value of ['', 'false', 'TRUE', 'True', '1', 'yes', 'sim']) {
+      expect(isDemoInstance(page(tag('resort-demo', value))), value).toBe(false)
+    }
   })
 })
 

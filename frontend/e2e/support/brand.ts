@@ -20,6 +20,8 @@ export interface Theme {
   color: string
   /** true é o logotipo comum. */
   logo: boolean | keyof typeof FICTIONAL_LOGOS
+  /** Instalação de demonstração (D-125): a meta resort-demo com "true". */
+  demo?: boolean
 }
 
 const escapeHtml = (value: string) =>
@@ -43,6 +45,7 @@ export async function applyTheme(context: BrowserContext, theme: Theme): Promise
       'resort-name': escapeHtml(theme.name),
       'resort-brand-color': theme.color,
       'resort-brand-logo': theme.logo ? '/brand/logo.png' : '',
+      'resort-demo': theme.demo ? 'true' : '',
     }
     let html = await response.text()
     for (const [name, content] of Object.entries(values)) {

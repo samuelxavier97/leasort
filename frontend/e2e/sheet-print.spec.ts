@@ -15,14 +15,15 @@ const MAX_LOGO_WIDTH = (45 * 96) / 25.4
  * E8: a ficha no pior caso (6 acompanhantes e 2.000 caracteres de observações, D-097) sai em uma
  * página A4, sem logotipo e com o logotipo fictício comum, muito largo e muito alto (D-117). O PDF é o
  * da impressão do Chromium, com o @page da ficha (A4, 12 mm). Automatiza a conferência manual da D-097.
+ * A instalação de demonstração fica ligada: a etiqueta do rodapé não pode sair na ficha (D-125).
  */
 test('E8: a ficha no pior caso sai em uma página A4, com e sem logotipo', async ({ world }) => {
   const { host, visitId } = await worstCaseArrival(world)
   const themes: [string, Theme][] = [
-    ['sem logotipo', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: false }],
-    ['logotipo comum', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: true }],
-    ['logotipo muito largo', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: 'wide' }],
-    ['logotipo muito alto', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: 'tall' }],
+    ['sem logotipo', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: false, demo: true }],
+    ['logotipo comum', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: true, demo: true }],
+    ['logotipo muito largo', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: 'wide', demo: true }],
+    ['logotipo muito alto', { name: FICTIONAL_RESORT, color: '#1e3a5f', logo: 'tall', demo: true }],
   ]
   for (const [label, theme] of themes) {
     const context = await world.newContext('HOST')
@@ -35,7 +36,10 @@ test('E8: a ficha no pior caso sai em uma página A4, com e sem logotipo', async
     await expect(page.getByRole('region', { name: 'Acompanhantes presentes' }).getByRole('listitem')).toHaveCount(4)
     await expect(page.getByRole('region', { name: 'Acompanhantes ausentes' }).getByRole('listitem')).toHaveCount(2)
 
+    // Na tela, o rodapé mostra a etiqueta da demonstração; na impressão, não (D-125).
+    await expect(page.getByRole('contentinfo').getByText('Ambiente de demonstração')).toBeVisible()
     await page.emulateMedia({ media: 'print' })
+    await expect(page.getByText('Ambiente de demonstração'), `${label}: etiqueta na impressão`).toBeHidden()
     const identity = page.getByTestId('sheet-identity')
     if (theme.logo) {
       const logo = identity.getByRole('img', { name: FICTIONAL_RESORT })

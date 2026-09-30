@@ -30,6 +30,7 @@ RUN mv /usr/share/nginx/html/index.html /usr/share/nginx/index.html.template \
 COPY --chmod=755 nginx/18-resort.envsh /docker-entrypoint.d/18-resort.envsh
 COPY --chmod=755 nginx/40-resort-name.sh /docker-entrypoint.d/40-resort-name.sh
 COPY --chmod=755 nginx/41-resort-brand.sh /docker-entrypoint.d/41-resort-brand.sh
+COPY --chmod=755 nginx/42-resort-demo.sh /docker-entrypoint.d/42-resort-demo.sh
 COPY --chmod=755 nginx/45-reload-loop.sh /docker-entrypoint.d/45-reload-loop.sh
 COPY nginx/templates/ /etc/nginx/templates/
 COPY nginx/snippets/ /etc/nginx/snippets/
