@@ -122,6 +122,29 @@ test('E10: dashboard do ADMIN com faixa, chegada e negativa de hoje, menu em uma
   expect(Number(await invalid.getByRole('cell').nth(1).textContent())).toBeGreaterThanOrEqual(1)
   await expect(page.getByText('Acessos por dia')).toHaveCount(0)
 
+  // RESORT_NAME em texto: quebra em até duas linhas, com reticências só depois da segunda; o menu continua
+  // numa linha a 1280 px, com o nome comum do ADMIN inteiro.
+  for (const [name, clipped] of [
+    [FICTIONAL_RESORT, false],
+    ['Resort Fictício das Águas Termais, Parque Aquático e Centro de Convenções da Serra Azul', true],
+  ] as const) {
+    const named = await adminDashboard(world, { name, color: '', logo: false }, undefined, carlos)
+    const brandName = named.getByRole('banner').getByTestId('brand-name')
+    await expect(brandName).toHaveText(name)
+    const box = await brandName.evaluate((element) => ({
+      lines: Math.round(element.clientHeight / parseFloat(getComputedStyle(element).lineHeight)),
+      clipped: element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1,
+    }))
+    expect(box.lines, name).toBeLessThanOrEqual(2)
+    expect(box.clipped, name).toBe(clipped)
+    const rows = await named
+      .getByRole('navigation', { name: 'Menu principal' })
+      .evaluate((element) => new Set([...element.children].map((child) => Math.round(child.getBoundingClientRect().top))).size)
+    expect(rows, `menu numa linha com "${name}"`).toBe(1)
+    expect((await named.getByRole('banner').boundingBox())!.height).toBeLessThanOrEqual(72)
+    expect(await named.getByTestId('header-user-name').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
+
   // Celular: a faixa e os cartões sem rolagem horizontal.
   const mobile = await adminDashboard(world, THEMES[2], { width: 390, height: 844 })
   await expect(mobile.getByTestId('dashboard-band')).toBeVisible()
