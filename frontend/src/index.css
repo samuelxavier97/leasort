@@ -21,6 +21,7 @@
   --color-page: var(--page);
   --color-soft-strong: var(--soft-strong);
   --color-brand-accent: var(--brand-accent);
+  --color-brand-accent-foreground: var(--brand-accent-foreground);
   --color-status-ok: var(--status-ok);
   --color-status-denied: var(--status-denied);
   --color-secondary: var(--secondary);
@@ -65,6 +66,7 @@
   --page: #f2f2f0;
   --soft-strong: #dbe0e3;
   --brand-accent: #b08d57;
+  --brand-accent-foreground: #1c1917;
   --secondary: #ebeceb;
   --secondary-foreground: #1c1917;
   --muted: #ebeceb;

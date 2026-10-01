@@ -1,26 +1,44 @@
 import { api } from '@/lib/api'
+import type { DenialReason } from '@/features/access/api'
 
-/** Filtros do ADMIN (D-098, D-099): período e Prospector. O PROSPECTOR não envia nenhum. */
+/** Filtros do ADMIN (D-098, D-099): período e Prospector. O PROSPECTOR envia só o período (D-128). */
 export interface DashboardParams {
   from?: string
   to?: string
   prospectorId?: string
 }
 
+/** Saudação calculada no backend pelo horário em `APP_TIMEZONE` (D-128). */
+export type Greeting = 'MORNING' | 'AFTERNOON' | 'EVENING'
+
+/** Visita de hoje (D-128): sem entrada, `arrivedAt` e `companionsPresent` são nulos. */
+export interface TodayVisit {
+  visitId: string
+  leadName: string
+  prospectorName: string
+  companionsCount: number
+  companionsPresent: number | null
+  arrivedAt: string | null
+}
+
 export interface AdminSummary {
   from: string
   to: string
   today: string
+  greeting: Greeting
   totalLeads: number
   assignedLeads: number
   scheduledVisits: number
   visitsToday: number
+  arrivedToday: number
   activeInvitations: number
   completedVisits: number
   noShows: number
   cancellations: number
   /** Pessoas recebidas: o Lead mais os acompanhantes presentes (D-098). */
   entries: number
+  previous: { from: string; to: string; completedVisits: number; noShows: number; cancellations: number; entries: number }
+  todayVisits: TodayVisit[]
 }
 
 export interface UpcomingVisit {
@@ -35,12 +53,17 @@ export interface ProspectorSummary {
   from: string
   to: string
   today: string
+  greeting: Greeting
   myLeads: number
   scheduledVisits: number
   visitsToday: number
+  arrivedToday: number
   activeInvitations: number
   completedVisits: number
+  noShows: number
+  previous: { from: string; to: string; completedVisits: number; noShows: number }
   upcomingVisits: UpcomingVisit[]
+  todayVisits: TodayVisit[]
 }
 
 export interface VisitsByDay {
@@ -49,10 +72,19 @@ export interface VisitsByDay {
   days: { date: string; scheduled: number; completed: number; noShow: number; cancelled: number }[]
 }
 
-export interface AccessByDay {
+/** Negativas por motivo (D-129): os cinco motivos, do mais frequente ao menos. */
+export interface Denials {
   from: string
   to: string
-  days: { date: string; authorized: number; denied: number }[]
+  total: number
+  reasons: { reason: DenialReason; count: number }[]
+}
+
+/** Desempenho por Prospector (D-128), na ordem do backend: realizadas, taxa e nome. */
+export interface ProspectorPerformance {
+  from: string
+  to: string
+  prospectors: { prospectorId: string; name: string; completedVisits: number; noShows: number; attendanceRate: number }[]
 }
 
 export const dashboardQueryKey = ['dashboard'] as const
@@ -70,15 +102,20 @@ export function getAdminSummary(params: DashboardParams): Promise<AdminSummary> 
   return api<AdminSummary>(`/api/dashboard/summary${query(params)}`)
 }
 
-/** Sem parâmetros: o backend usa os 30 dias até hoje e sempre o Prospector da sessão. */
-export function getProspectorSummary(): Promise<ProspectorSummary> {
-  return api<ProspectorSummary>('/api/dashboard/summary')
+/** Sem `prospectorId`: o backend usa sempre o Prospector da sessão. */
+export function getProspectorSummary(params: Omit<DashboardParams, 'prospectorId'>): Promise<ProspectorSummary> {
+  return api<ProspectorSummary>(`/api/dashboard/summary${query(params)}`)
 }
 
 export function getVisitsByDay(params: DashboardParams): Promise<VisitsByDay> {
   return api<VisitsByDay>(`/api/dashboard/visits-by-day${query(params)}`)
 }
 
-export function getAccessByDay(params: DashboardParams): Promise<AccessByDay> {
-  return api<AccessByDay>(`/api/dashboard/access-by-day${query(params)}`)
+export function getDenials(params: DashboardParams): Promise<Denials> {
+  return api<Denials>(`/api/dashboard/denials${query(params)}`)
+}
+
+/** Compara todos os Prospectores: sem o filtro de um deles. */
+export function getProspectorPerformance(params: DashboardParams): Promise<ProspectorPerformance> {
+  return api<ProspectorPerformance>(`/api/dashboard/prospector-performance${query({ from: params.from, to: params.to })}`)
 }

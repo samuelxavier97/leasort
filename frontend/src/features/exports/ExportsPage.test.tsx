@@ -78,7 +78,7 @@ describe('XF2 — blocos de exportação', () => {
     const options = (title: string, label: string) =>
       within(within(block(title)).getByLabelText(label)).getAllByRole('option').map((o) => o.textContent)
     expect(options('Leads', 'Status do Lead')).toEqual(['Todos', 'Novo', 'Contatado', 'Visita agendada', 'Visitou', 'Descartado'])
-    expect(options('Visitas', 'Status da visita')).toEqual(['Todos', 'Agendada', 'Realizada', 'Cancelada', 'Não compareceu'])
+    expect(options('Visitas', 'Status da visita')).toEqual(['Todos', 'Agendada', 'Realizada', 'Cancelada', 'Sem comparecimento'])
     expect(options('Acessos', 'Resultado')).toEqual(['Todos', 'Liberado', 'Negado'])
   })
 

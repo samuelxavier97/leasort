@@ -13,9 +13,11 @@ import javax.sql.DataSource;
 import org.springframework.jdbc.datasource.DelegatingDataSource;
 
 /**
- * Conta os statements JDBC preparados em toda a suíte, por qualquer caminho (Hibernate, JdbcClient, Spring
- * Session), e registra os {@code fetchSize} pedidos. Serve para provar que o número de consultas de uma
- * requisição não cresce com o volume de dados e que a exportação lê com cursor (D-098, D-101).
+ * Conta os statements JDBC preparados em toda a suíte, pelo Hibernate ou pelo JdbcClient, e registra os
+ * {@code fetchSize} pedidos. Serve para provar que o número de consultas de uma requisição não cresce com o
+ * volume de dados e que a exportação lê com cursor (D-098, D-101). Os da Spring Session ({@code SPRING_SESSION})
+ * ficam de fora: com o servidor numa porta real, a sessão é gravada depois da resposta, e o statement da
+ * requisição anterior podia cair na janela medida da seguinte (achado no PR 2 da D-128).
  */
 public class StatementCounter extends DelegatingDataSource {
 
@@ -51,11 +53,17 @@ public class StatementCounter extends DelegatingDataSource {
                 (proxy, method, args) -> {
                     Object result = invoke(connection, method, args);
                     if (COUNTED.contains(method.getName())) {
-                        COUNT.incrementAndGet();
+                        if (!sessionStatement(args)) {
+                            COUNT.incrementAndGet();
+                        }
                         return recordingFetchSize((Statement) result);
                     }
                     return result;
                 });
+    }
+
+    private static boolean sessionStatement(Object[] args) {
+        return args != null && args.length > 0 && args[0] instanceof String sql && sql.contains("SPRING_SESSION");
     }
 
     private static Object recordingFetchSize(Statement statement) {

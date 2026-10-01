@@ -6,6 +6,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.resort.platform.ApiClient;
 import com.resort.platform.users.Role;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -174,8 +175,12 @@ class AccessRegisterTest extends AccessTestSupport {
         Booking entered = book(me, calendar.today(), 0);
         Booking future = book(me, calendar.today().plusDays(1), 0);
         String unknown = com.resort.platform.TestCodes.unique();
+        LocalDate today = calendar.today();
         // Ontem, em APP_TIMEZONE: não aparece.
-        clock.set(calendar.startOfDay(calendar.today()).minusSeconds(60));
+        clock.set(calendar.startOfDay(today).minusSeconds(60));
+        validate(gate.client(), unknown).andExpect(jsonPath("$.denialReason").value("INVALID_CODE"));
+        // Amanhã também não: a lista é só de hoje, e um registro com data à frente não toma o lugar dos de hoje.
+        clock.set(calendar.endOfDay(today).plusSeconds(60));
         validate(gate.client(), unknown).andExpect(jsonPath("$.denialReason").value("INVALID_CODE"));
         clock.reset();
         validate(gate.client(), unknown).andExpect(jsonPath("$.denialReason").value("INVALID_CODE"));

@@ -25,7 +25,7 @@ export function DayChart<K extends string>({
 }) {
   const id = title.toLowerCase().replace(/\W+/g, '-')
   return (
-    <section aria-labelledby={`${id}-title`} className="space-y-2 rounded-md border bg-background p-4">
+    <section aria-labelledby={`${id}-title`} className="min-w-0 space-y-2 rounded-xl border bg-card p-4 shadow-sm sm:p-5">
       <h2 id={`${id}-title`} className="font-semibold">
         {title}
       </h2>

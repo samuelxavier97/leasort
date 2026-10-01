@@ -16,8 +16,11 @@ import {
 import { logout, meQueryKey } from '@/features/auth/api'
 import { useMe } from '@/features/auth/useMe'
 import { cn } from '@/lib/utils'
-import { NAV_ITEMS, ROLE_LABELS, screenTitle } from './navigation'
+import { ADMIN_GROUP, NAV_ITEMS, ROLE_LABELS, screenTitle } from './navigation'
 import { useDocumentTitle } from './useDocumentTitle'
+
+const NAV_ITEM = 'rounded-t-md border-b-2 border-transparent px-2.5 py-2 text-sm hover:bg-muted'
+const NAV_ITEM_ACTIVE = 'border-primary-edge bg-soft-strong font-semibold text-foreground'
 
 export function AppLayout() {
   const { data: me } = useMe()
@@ -37,40 +40,62 @@ export function AppLayout() {
   if (!me) {
     return null
   }
+  const items = NAV_ITEMS[me.role]
+  const grouped = items.filter((item) => ADMIN_GROUP.paths.includes(item.to))
+  const groupActive = grouped.some((item) => location.pathname.startsWith(item.to))
 
   return (
     <div className="flex min-h-svh flex-col bg-page print:block print:min-h-0 print:bg-white">
       {/* Faixa na cor principal do cliente (D-117, D-126); o cabeçalho continua branco, para o logotipo. */}
       <BrandStripe className="print:hidden" />
       <header className="border-b bg-background print:hidden">
-        <div className="mx-auto flex max-w-6xl items-center gap-x-6 gap-y-2 px-4 py-3 md:flex-wrap">
+        <div className="mx-auto flex max-w-6xl items-center gap-x-4 gap-y-2 px-4 py-3 md:flex-wrap">
           <Link to="/" className="flex min-w-0 shrink items-center">
             <BrandIdentity />
           </Link>
           {/* Computador: o menu e o usuário no cabeçalho. Celular: tudo no botão "Menu" (D-122). */}
           <nav aria-label="Menu principal" className="hidden flex-1 flex-wrap gap-1 md:flex">
-            {NAV_ITEMS[me.role].map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                // Item ativo: fundo, negrito e a linha na cor de borda da D-118, para não depender só da
-                // cor principal (uma cor clara some no branco).
-                className={({ isActive }) =>
-                  cn(
-                    'rounded-t-md border-b-2 border-transparent px-3 py-2 text-sm hover:bg-muted',
-                    isActive && 'border-primary-edge bg-soft-strong font-semibold text-foreground',
-                  )
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
+            {items
+              .filter((item) => !grouped.includes(item))
+              .map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  // Item ativo: fundo, negrito e a linha na cor de borda da D-118, para não depender só da
+                  // cor principal (uma cor clara some no branco).
+                  className={({ isActive }) => cn(NAV_ITEM, isActive && NAV_ITEM_ACTIVE)}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            {grouped.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger className={cn(NAV_ITEM, 'inline-flex items-center gap-1', groupActive && NAV_ITEM_ACTIVE)}>
+                  {ADMIN_GROUP.label}
+                  <ChevronDown className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {grouped.map((item) => (
+                    <DropdownMenuItem
+                      key={item.to}
+                      asChild
+                      className={cn(
+                        'min-h-9 border-l-2 border-transparent',
+                        location.pathname.startsWith(item.to) && 'border-primary-edge bg-soft-strong font-semibold',
+                      )}
+                    >
+                      <NavLink to={item.to}>{item.label}</NavLink>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </nav>
           <div className="hidden md:block">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm">
-                  {me.name}
+                <Button variant="ghost" size="sm" title={me.name}>
+                  <span className="max-w-40 truncate">{me.name}</span>
                   <ChevronDown />
                 </Button>
               </DropdownMenuTrigger>
@@ -95,7 +120,7 @@ export function AppLayout() {
               <DropdownMenuContent align="end" className="w-64">
                 <UserLabel name={me.name} role={ROLE_LABELS[me.role]} />
                 <DropdownMenuSeparator />
-                {NAV_ITEMS[me.role].map((item) => (
+                {items.map((item) => (
                   // O asChild do Radix junta as classes como texto: o item ativo sai da rota atual.
                   <DropdownMenuItem
                     key={item.to}

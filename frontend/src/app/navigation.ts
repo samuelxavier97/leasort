@@ -55,6 +55,13 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
   HOST: [{ to: '/chegadas', label: 'Chegadas de hoje' }],
 }
 
+/**
+ * No computador, os três últimos itens do ADMIN ficam num submenu "Administração" (D-128): com os dez lado a
+ * lado, Usuários e Auditoria quebravam para uma segunda linha a 1280 px. A ordem da §16.1 não muda, e o
+ * menu do celular continua com a lista inteira.
+ */
+export const ADMIN_GROUP = { label: 'Administração', paths: ['/exportacoes', '/usuarios', '/auditoria'] }
+
 /** Telas fora do menu, pelo caminho; as do menu usam o rótulo do perfil. */
 const OTHER_SCREENS: [RegExp, string][] = [
   [/^\/leads\/importar$/, 'Importar Leads'],

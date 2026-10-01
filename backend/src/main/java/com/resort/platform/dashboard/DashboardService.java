@@ -4,23 +4,32 @@ import com.resort.platform.auth.Viewer;
 import com.resort.platform.common.ApiException;
 import com.resort.platform.common.BusinessCalendar;
 import com.resort.platform.common.DatePeriods;
-import com.resort.platform.dashboard.dto.AccessByDayResponse;
+import com.resort.platform.access.DenialReason;
+import com.resort.platform.dashboard.dto.AdminPreviousPeriod;
 import com.resort.platform.dashboard.dto.AdminSummary;
 import com.resort.platform.dashboard.dto.DashboardPeriod;
+import com.resort.platform.dashboard.dto.DenialsResponse;
+import com.resort.platform.dashboard.dto.Greeting;
+import com.resort.platform.dashboard.dto.ProspectorPerformanceResponse;
+import com.resort.platform.dashboard.dto.ProspectorPreviousPeriod;
 import com.resort.platform.dashboard.dto.ProspectorSummary;
 import com.resort.platform.dashboard.dto.SummaryResponse;
 import com.resort.platform.dashboard.dto.VisitsByDayResponse;
 import com.resort.platform.prospectors.ProspectorRepository;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Dashboard (§16.7, D-098): período padrão de 30 dias até hoje, máximo de 366, em {@code APP_TIMEZONE}. O
- * PROSPECTOR vê só os próprios números; o filtro de Prospector é do ADMIN. Só leitura, sem auditoria.
+ * Dashboard (§16.7, D-098, D-128, D-129): período padrão de 30 dias até hoje, máximo de 366, em
+ * {@code APP_TIMEZONE}. O PROSPECTOR vê só os próprios números; o filtro de Prospector é do ADMIN. Só leitura,
+ * sem auditoria.
  */
 @Service
 @Transactional(readOnly = true)
@@ -29,6 +38,7 @@ public class DashboardService {
     static final int DEFAULT_DAYS = 30;
     static final int MAX_DAYS = 366;
     static final int UPCOMING_LIMIT = 10;
+    static final int TODAY_LIMIT = 50;
 
     private final DashboardQueries queries;
     private final ProspectorRepository prospectors;
@@ -45,18 +55,29 @@ public class DashboardService {
     public SummaryResponse summary(LocalDate from, LocalDate to, UUID prospectorId, Viewer viewer) {
         LocalDate today = calendar.today();
         DashboardPeriod period = period(from, to, today);
+        DashboardPeriod previous = previous(period);
         UUID scope = scope(prospectorId, viewer);
-        DashboardQueries.VisitCounts visits = queries.visits(today, period, scope);
+        Greeting greeting = Greeting.at(clock.instant().atZone(calendar.zone()).getHour());
+        DashboardQueries.VisitCounts visits = queries.visits(today, period, previous, scope);
         long activeInvitations = queries.activeInvitations(clock.instant(), scope);
+        var todayVisits = queries.todayVisits(today, scope, TODAY_LIMIT);
         if (viewer.isProspector()) {
-            return new ProspectorSummary(period.from(), period.to(), today, queries.leads(scope).total(),
-                    visits.scheduled(), visits.visitsToday(), activeInvitations, visits.completed(),
-                    queries.upcomingVisits(today, scope, UPCOMING_LIMIT));
+            return new ProspectorSummary(period.from(), period.to(), today, greeting, queries.leads(scope).total(),
+                    visits.scheduled(), visits.visitsToday(), visits.arrivedToday(), activeInvitations, visits.completed(),
+                    visits.noShows(),
+                    new ProspectorPreviousPeriod(previous.from(), previous.to(), visits.previousCompleted(),
+                            visits.previousNoShows()),
+                    queries.upcomingVisits(today, scope, UPCOMING_LIMIT), todayVisits);
         }
         DashboardQueries.LeadCounts leads = queries.leads(scope);
         long entries = queries.entries(calendar.startOfDay(period.from()), calendar.endOfDay(period.to()), scope);
-        return new AdminSummary(period.from(), period.to(), today, leads.total(), leads.assigned(), visits.scheduled(),
-                visits.visitsToday(), activeInvitations, visits.completed(), visits.noShows(), visits.cancellations(), entries);
+        long previousEntries = queries.entries(calendar.startOfDay(previous.from()), calendar.endOfDay(previous.to()), scope);
+        return new AdminSummary(period.from(), period.to(), today, greeting, leads.total(), leads.assigned(),
+                visits.scheduled(), visits.visitsToday(), visits.arrivedToday(), activeInvitations, visits.completed(),
+                visits.noShows(), visits.cancellations(), entries,
+                new AdminPreviousPeriod(previous.from(), previous.to(), visits.previousCompleted(), visits.previousNoShows(),
+                        visits.previousCancellations(), previousEntries),
+                todayVisits);
     }
 
     public VisitsByDayResponse visitsByDay(LocalDate from, LocalDate to, UUID prospectorId, Viewer viewer) {
@@ -64,12 +85,24 @@ public class DashboardService {
         return new VisitsByDayResponse(period.from(), period.to(), queries.visitsByDay(period, scope(prospectorId, viewer)));
     }
 
-    /** Só ADMIN (SecurityConfig); o filtro de Prospector segue a mesma regra do resumo. */
-    public AccessByDayResponse accessByDay(LocalDate from, LocalDate to, UUID prospectorId, Viewer viewer) {
+    /** Só ADMIN (SecurityConfig); o filtro de Prospector segue a mesma regra do resumo (D-129). */
+    public DenialsResponse denials(LocalDate from, LocalDate to, UUID prospectorId, Viewer viewer) {
         DashboardPeriod period = period(from, to, calendar.today());
-        return new AccessByDayResponse(period.from(), period.to(), queries.accessByDay(period,
-                calendar.startOfDay(period.from()), calendar.endOfDay(period.to()), calendar.zone().getId(),
-                scope(prospectorId, viewer)));
+        Map<DenialReason, Long> counts = queries.denials(calendar.startOfDay(period.from()), calendar.endOfDay(period.to()),
+                scope(prospectorId, viewer));
+        List<DenialsResponse.Reason> reasons = counts.entrySet().stream()
+                .map(entry -> new DenialsResponse.Reason(entry.getKey(), entry.getValue()))
+                .sorted(Comparator.comparingLong(DenialsResponse.Reason::count).reversed()
+                        .thenComparing(DenialsResponse.Reason::reason))
+                .toList();
+        long total = reasons.stream().mapToLong(DenialsResponse.Reason::count).sum();
+        return new DenialsResponse(period.from(), period.to(), total, reasons);
+    }
+
+    /** Só ADMIN (SecurityConfig): compara todos os Prospectores, sem o filtro de um deles (D-128). */
+    public ProspectorPerformanceResponse prospectorPerformance(LocalDate from, LocalDate to) {
+        DashboardPeriod period = period(from, to, calendar.today());
+        return new ProspectorPerformanceResponse(period.from(), period.to(), queries.prospectorPerformance(period));
     }
 
     /**
@@ -87,6 +120,11 @@ public class DashboardService {
             throw ApiException.notFound("PROSPECTOR_NOT_FOUND", "Prospector não encontrado.");
         }
         return prospectorId;
+    }
+
+    /** Período anterior de mesmo tamanho, encostado no início do atual (D-128). */
+    static DashboardPeriod previous(DashboardPeriod period) {
+        return new DashboardPeriod(period.from().minusDays(period.days()), period.from().minusDays(1));
     }
 
     static DashboardPeriod period(LocalDate from, LocalDate to, LocalDate today) {

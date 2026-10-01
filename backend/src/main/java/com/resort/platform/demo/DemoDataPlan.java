@@ -31,7 +31,7 @@ import java.util.random.RandomGenerator;
 final class DemoDataPlan {
 
     static final long SEED = 20260930L;
-    static final int HISTORY_DAYS = 49;
+    static final int HISTORY_DAYS = 180;
     static final int FUTURE_DAYS = 10;
     static final int VISITS_TODAY = 2;
     static final String EMAIL_DOMAIN = "@example.com";
@@ -63,10 +63,12 @@ final class DemoDataPlan {
 
     private static final List<String> FEMALE = List.of(
             "Ana", "Maria", "Juliana", "Fernanda", "Camila", "Beatriz", "Larissa", "Patrícia", "Aline", "Mariana",
-            "Gabriela", "Letícia", "Vanessa", "Renata", "Carla", "Daniela", "Luciana", "Priscila", "Tatiane", "Bruna");
+            "Gabriela", "Letícia", "Vanessa", "Renata", "Carla", "Daniela", "Luciana", "Priscila", "Tatiane", "Bruna",
+            "Ana Paula", "Maria Clara", "Ana Luísa", "Maria Eduarda");
     private static final List<String> MALE = List.of(
             "João", "José", "Carlos", "Paulo", "Lucas", "Pedro", "Rafael", "Gabriel", "Bruno", "Felipe",
-            "Marcelo", "Rodrigo", "Eduardo", "Fábio", "André", "Diego", "Leandro", "Ricardo", "Vinícius", "Gustavo");
+            "Marcelo", "Rodrigo", "Eduardo", "Fábio", "André", "Diego", "Leandro", "Ricardo", "Vinícius", "Gustavo",
+            "João Pedro", "Pedro Henrique", "Luiz Fernando", "José Carlos");
     private static final List<String> SURNAMES = List.of(
             "Silva", "Santos", "Oliveira", "Souza", "Rodrigues", "Ferreira", "Alves", "Pereira", "Lima", "Gomes",
             "Costa", "Ribeiro", "Martins", "Carvalho", "Almeida", "Lopes", "Soares", "Fernandes", "Vieira", "Barbosa");
@@ -109,6 +111,8 @@ final class DemoDataPlan {
     private final InvitationCodeGenerator codes;
     private final Set<String> usedCodes = new HashSet<>();
     private final Set<String> usedEmails = new HashSet<>();
+    /** Nomes completos de Lead já usados: nenhum se repete na carga. */
+    private final Set<String> usedLeadNames = new HashSet<>();
 
     private final List<DemoUser> users = new ArrayList<>();
     private final List<DemoProspector> prospectors = new ArrayList<>();
@@ -160,8 +164,15 @@ final class DemoDataPlan {
                 pastVisit(day);
             }
         }
+        // Hoje: as duas com acompanhantes; a primeira já entrou, se a carga roda depois das 8h10 (o quadro de
+        // hoje mostra uma chegada), e a outra fica para a Portaria liberar ao vivo.
+        boolean arrived = !beforeNow(at(today, 9 * 60)).isBefore(at(today, 8 * 60));
         for (int i = 0; i < VISITS_TODAY; i++) {
-            upcomingVisit(today, i == 0 ? 2 : 0);
+            if (i == 0 && arrived) {
+                chain(today, pickProspector(), VisitStatus.COMPLETED, null, 2);
+            } else {
+                upcomingVisit(today, 2);
+            }
         }
         for (int ahead = 1; ahead <= FUTURE_DAYS; ahead++) {
             LocalDate day = today.plusDays(ahead);
@@ -235,7 +246,8 @@ final class DemoDataPlan {
         LeadStatus leadStatus = LeadStatus.VISIT_SCHEDULED;
         switch (status) {
             case COMPLETED -> {
-                entryAt = at(day, 9 * 60 + random.nextInt(450));
+                // Hoje, a entrada fica no passado (no máximo 10 minutos antes da carga).
+                entryAt = beforeNow(at(day, 9 * 60 + random.nextInt(450)));
                 updated = entryAt;
                 invitationStatus = InvitationStatus.USED;
                 leadStatus = LeadStatus.VISITED;
@@ -314,9 +326,15 @@ final class DemoDataPlan {
                     birth = lead.birthDate().minusYears(22 + random.nextInt(10));
                 }
             }
-            String first = (female ? FEMALE : MALE).get(random.nextInt(FEMALE.size()));
-            String surname = relationship == Relationship.FRIEND ? SURNAMES.get(random.nextInt(SURNAMES.size())) : lead.surname();
-            DemoCompanion companion = new DemoCompanion(UUID.randomUUID(), visit.id(), first + " " + surname, birth, relationship,
+            String surname = relationship == Relationship.FRIEND ? surnames() : lead.surname();
+            // Na mesma visita, nenhum nome completo se repete, nem o do Lead.
+            Set<String> taken = new HashSet<>(List.of(lead.fullName()));
+            family.forEach(other -> taken.add(other.name()));
+            String name;
+            do {
+                name = (female ? FEMALE : MALE).get(random.nextInt(FEMALE.size())) + " " + surname;
+            } while (taken.contains(name));
+            DemoCompanion companion = new DemoCompanion(UUID.randomUUID(), visit.id(), name, birth, relationship,
                     visit.createdAt());
             companions.add(companion);
             family.add(companion);
@@ -400,18 +418,35 @@ final class DemoDataPlan {
 
     // Pessoas, contatos e códigos.
 
+    /** Primeiro nome (às vezes composto) e dois sobrenomes, como "Ana Paula Ribeiro Costa". */
     private record Person(String first, String surname, boolean female, LocalDate birthDate) {
         String fullName() {
             return first + " " + surname;
         }
     }
 
+    /** Lead com nome completo único na carga (pedido na revisão do PR 2 da D-128). */
     private Person person() {
-        boolean female = random.nextBoolean();
-        String first = (female ? FEMALE : MALE).get(random.nextInt(FEMALE.size()));
-        String surname = SURNAMES.get(random.nextInt(SURNAMES.size()));
+        boolean female;
+        String first;
+        String surname;
+        do {
+            female = random.nextBoolean();
+            first = (female ? FEMALE : MALE).get(random.nextInt(FEMALE.size()));
+            surname = surnames();
+        } while (!usedLeadNames.add(first + " " + surname));
         LocalDate birth = today.minusYears(25 + random.nextInt(40)).minusDays(random.nextInt(365));
         return new Person(first, surname, female, birth);
+    }
+
+    /** Dois sobrenomes diferentes. */
+    private String surnames() {
+        String first = SURNAMES.get(random.nextInt(SURNAMES.size()));
+        String second;
+        do {
+            second = SURNAMES.get(random.nextInt(SURNAMES.size()));
+        } while (second.equals(first));
+        return first + " " + second;
     }
 
     /** Telefone com DDD 00, que não existe no Brasil; aceito pela validação do formulário e da API. */
@@ -420,7 +455,7 @@ final class DemoDataPlan {
     }
 
     private String email(Person person) {
-        String base = ascii(person.first() + "." + person.surname()).toLowerCase();
+        String base = ascii(person.first() + "." + person.surname().split(" ")[0]).toLowerCase().replace(' ', '.');
         String email = base + EMAIL_DOMAIN;
         for (int n = 2; !usedEmails.add(email); n++) {
             email = base + n + EMAIL_DOMAIN;

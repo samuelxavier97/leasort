@@ -6,6 +6,7 @@ import com.resort.platform.access.AccessResult;
 import com.resort.platform.access.DenialReason;
 import com.resort.platform.common.Emails;
 import com.resort.platform.demo.DemoDataPlan.DemoAccess;
+import com.resort.platform.demo.DemoDataPlan.DemoCompanion;
 import com.resort.platform.demo.DemoDataPlan.DemoData;
 import com.resort.platform.demo.DemoDataPlan.DemoInvitation;
 import com.resort.platform.demo.DemoDataPlan.DemoLead;
@@ -87,7 +88,9 @@ class DemoDataPlanTest {
             assertThat(invitation.cancelledAt() != null).isEqualTo(expected == InvitationStatus.CANCELLED);
             switch (visit.status()) {
                 case SCHEDULED -> assertThat(visit.date()).isAfterOrEqualTo(today);
-                case COMPLETED, NO_SHOW -> assertThat(visit.date()).isBefore(today);
+                // A de hoje pode já ter entrado (D-128); sem comparecimento só no passado.
+                case COMPLETED -> assertThat(visit.date()).isBeforeOrEqualTo(today);
+                case NO_SHOW -> assertThat(visit.date()).isBefore(today);
                 case CANCELLED -> {
                     if (visit.cancelReason() != VisitCancelReason.RESCHEDULED) {
                         assertThat(visit.date()).isBefore(today);
@@ -172,9 +175,18 @@ class DemoDataPlanTest {
             assertThat(lead.phone()).matches("\\(00\\) 9\\d{4}-\\d{4}").matches(PhoneFormat.REGEX);
             assertThat(lead.email()).endsWith("@example.com");
             assertThat(Emails.isValid(lead.email())).isTrue();
-            assertThat(lead.name().split(" ")).hasSize(2);
+            // Primeiro nome (às vezes composto) e dois sobrenomes.
+            assertThat(lead.name().split(" ")).hasSizeBetween(3, 4);
         }
         assertThat(data.leads().stream().map(DemoLead::email).distinct()).hasSize(data.leads().size());
+        // Nenhum nome completo de Lead se repete; na mesma visita, nenhum acompanhante repete outro nem o Lead.
+        assertThat(data.leads().stream().map(DemoLead::name).distinct()).hasSize(data.leads().size());
+        Map<UUID, String> leadOfVisit = data.visits().stream().collect(Collectors.toMap(DemoVisit::id,
+                visit -> data.leads().stream().filter(l -> l.id().equals(visit.leadId())).findFirst().orElseThrow().name()));
+        data.companions().stream().collect(Collectors.groupingBy(DemoCompanion::visitId)).forEach((visitId, family) -> {
+            List<String> names = family.stream().map(DemoCompanion::name).toList();
+            assertThat(names).doesNotHaveDuplicates().doesNotContain(leadOfVisit.get(visitId));
+        });
         data.prospectors().forEach(p -> assertThat(p.phone()).matches("\\(00\\) 9\\d{4}-\\d{4}"));
         data.users().forEach(u -> assertThat(u.email()).endsWith("@example.com"));
         assertThat(data.users().stream().map(u -> u.email()).collect(Collectors.toSet())).isEqualTo(DemoDataPlan.USER_EMAILS);
@@ -192,11 +204,15 @@ class DemoDataPlanTest {
         Map<Boolean, List<DemoVisit>> history = finals.stream().filter(v -> v.date().isBefore(today))
                 .collect(Collectors.partitioningBy(v -> v.date().getDayOfWeek() == DayOfWeek.SATURDAY
                         || v.date().getDayOfWeek() == DayOfWeek.SUNDAY));
-        // 7 semanas: 35 dias úteis, em média 3 visitas; 14 dias de fim de semana, em média 11.
-        assertThat(history.get(false).size() / 35.0).isBetween(2.5, 3.5);
-        assertThat(history.get(true).size() / 14.0).isBetween(10.0, 12.0);
+        // 180 dias de histórico: em média 3 visitas nos dias úteis e 11 nos fins de semana.
+        long weekendDays = today.minusDays(DemoDataPlan.HISTORY_DAYS).datesUntil(today)
+                .filter(d -> d.getDayOfWeek() == DayOfWeek.SATURDAY || d.getDayOfWeek() == DayOfWeek.SUNDAY).count();
+        assertThat(DemoDataPlan.HISTORY_DAYS).isEqualTo(180);
+        assertThat(history.get(false).size() / (double) (DemoDataPlan.HISTORY_DAYS - weekendDays)).isBetween(2.7, 3.3);
+        assertThat(history.get(true).size() / (double) weekendDays).isBetween(10.5, 11.5);
+        // Hoje: uma já entrou, a outra espera a Portaria.
         assertThat(finals.stream().filter(v -> v.date().equals(today))).hasSize(DemoDataPlan.VISITS_TODAY)
-                .allMatch(v -> v.status() == VisitStatus.SCHEDULED);
+                .extracting(DemoVisit::status).containsExactlyInAnyOrder(VisitStatus.COMPLETED, VisitStatus.SCHEDULED);
         assertThat(finals.stream().filter(v -> v.date().isAfter(today))).isNotEmpty();
         // Uma das visitas de hoje tem acompanhantes, para a Portaria marcar a presença ao vivo.
         Set<UUID> todayIds = finals.stream().filter(v -> v.date().equals(today)).map(DemoVisit::id).collect(Collectors.toSet());
@@ -249,5 +265,14 @@ class DemoDataPlanTest {
         DemoData second = generate(WEDNESDAY_AFTERNOON);
         assertThat(DemoLoader.totals(second)).isEqualTo(DemoLoader.totals(first));
         assertThat(second.leads().stream().map(DemoLead::name).toList()).isEqualTo(first.leads().stream().map(DemoLead::name).toList());
+    }
+
+    @Test
+    void beforeEightInTheMorningNobodyHasArrivedYet() {
+        ZonedDateTime early = ZonedDateTime.of(2026, 9, 30, 7, 30, 0, 0, ZONE);
+        DemoData data = generate(early);
+        assertThat(data.visits().stream().filter(v -> v.date().equals(early.toLocalDate())))
+                .hasSize(DemoDataPlan.VISITS_TODAY)
+                .allMatch(v -> v.status() == VisitStatus.SCHEDULED);
     }
 }

@@ -127,7 +127,8 @@ public class AccessService {
     /** Acessos de hoje, em APP_TIMEZONE, do mais recente para o mais antigo (D-092). */
     @Transactional(readOnly = true)
     public List<RecentAccessResponse> recent() {
-        return records.findRecent(calendar.startOfDay(calendar.today()), PageRequest.of(0, RECENT_LIMIT));
+        LocalDate today = calendar.today();
+        return records.findRecent(calendar.startOfDay(today), calendar.endOfDay(today), PageRequest.of(0, RECENT_LIMIT));
     }
 
     /** Verificações 2 a 5 da §12.2, nesta ordem; {@code null} quando o convite libera a entrada. */

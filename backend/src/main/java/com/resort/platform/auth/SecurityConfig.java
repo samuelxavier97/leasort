@@ -70,7 +70,7 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.GET, "/api/visits/*/sheet").hasAnyRole("ADMIN", "PROSPECTOR", "HOST")
                             .requestMatchers("/api/arrivals").hasAnyRole("ADMIN", "PROSPECTOR", "HOST")
                             .requestMatchers("/api/exports/**", "/api/audit").hasRole("ADMIN")
-                            .requestMatchers("/api/dashboard/access-by-day").hasRole("ADMIN")
+                            .requestMatchers("/api/dashboard/denials", "/api/dashboard/prospector-performance").hasRole("ADMIN")
                             .requestMatchers("/api/dashboard/**").hasAnyRole("ADMIN", "PROSPECTOR")
                             .requestMatchers("/api/visits", "/api/visits/**").hasAnyRole("ADMIN", "PROSPECTOR")
                             .requestMatchers("/api/invitations", "/api/invitations/**").hasAnyRole("ADMIN", "PROSPECTOR")

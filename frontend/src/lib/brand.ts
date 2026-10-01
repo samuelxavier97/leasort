@@ -7,6 +7,9 @@ export const DEFAULT_BRAND_COLOR = '#1f4e79'
 /** Dourado do Resortric (D-126): só decorativo, nunca texto (3,1:1 com branco), e nunca com tema de cliente. */
 export const PRODUCT_GOLD = '#b08d57'
 
+/** Texto sobre o dourado: o texto do sistema, 5,6:1 (D-128). */
+export const PRODUCT_GOLD_FOREGROUND = '#1c1917'
+
 /** Único endereço aceito para o logotipo: a cópia validada pelo Nginx na subida (D-115, D-119). */
 export const BRAND_LOGO_URL = '/brand/logo.png'
 
@@ -207,5 +210,8 @@ export function applyBrand(root: HTMLElement, brand: Brand): void {
   for (const name of ['--muted', '--accent', '--secondary']) set(name, palette.soft)
   for (const name of ['--border', '--input']) set(name, palette.border)
   set('--brand-accent', hasClientTheme(brand) ? palette.primary : PRODUCT_GOLD)
+  // Texto sobre o detalhe (o número do 1º lugar no ranking, D-128): quase preto sobre o dourado (5,6:1);
+  // com tema de cliente, o da cor principal (D-118).
+  set('--brand-accent-foreground', hasClientTheme(brand) ? palette.foreground : PRODUCT_GOLD_FOREGROUND)
   root.ownerDocument.querySelector<HTMLLinkElement>('link[rel="icon"]')?.setAttribute('href', faviconUrl(brand))
 }

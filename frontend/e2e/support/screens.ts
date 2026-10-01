@@ -8,6 +8,19 @@ export interface CompanionInput {
   cpf: string
 }
 
+/** Itens do ADMIN no submenu "Administração" do computador (D-128). */
+const ADMIN_GROUP = ['Exportações', 'Usuários', 'Auditoria']
+
+/** Abre uma tela pelo menu do computador; os itens de Administração passam pelo submenu (D-128). */
+export async function openFromMenu(page: Page, label: string): Promise<void> {
+  if (ADMIN_GROUP.includes(label)) {
+    await page.getByRole('navigation', { name: 'Menu principal' }).getByRole('button', { name: 'Administração' }).click()
+    await page.getByRole('menuitem', { name: label, exact: true }).click()
+  } else {
+    await page.getByRole('link', { name: label, exact: true }).click()
+  }
+}
+
 /** PROSPECTOR: abre o Lead pela carteira e agenda; devolve o código exibido no convite, sem hífen. */
 export async function scheduleVisit(
   page: Page,

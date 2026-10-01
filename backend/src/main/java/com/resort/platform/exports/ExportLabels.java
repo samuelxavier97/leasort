@@ -10,7 +10,7 @@ final class ExportLabels {
             "VISITED", "Visitou", "CANCELLED", "Descartado");
 
     static final Map<String, String> VISIT_STATUS = Map.of(
-            "SCHEDULED", "Agendada", "COMPLETED", "Realizada", "CANCELLED", "Cancelada", "NO_SHOW", "Não compareceu");
+            "SCHEDULED", "Agendada", "COMPLETED", "Realizada", "CANCELLED", "Cancelada", "NO_SHOW", "Sem comparecimento");
 
     static final Map<String, String> CANCEL_REASON = Map.of(
             "CANCELLED_BY_USER", "Cancelada pelo usuário", "RESCHEDULED", "Remarcação", "LEAD_DISCARDED", "Lead descartado");

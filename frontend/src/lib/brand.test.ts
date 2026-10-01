@@ -13,6 +13,7 @@ import {
   hasClientTheme,
   isDemoInstance,
   PRODUCT_GOLD,
+  PRODUCT_GOLD_FOREGROUND,
   PRODUCT_LOGO_MONO_URL,
   PRODUCT_LOGO_URL,
   PRODUCT_NAME,
@@ -230,6 +231,8 @@ describe('dourado e tema de cliente (D-126)', () => {
     for (const product of [brand(), brand({ resortName: 'Resort Fictício das Águas' })]) {
       applyBrand(root, product)
       expect(root.style.getPropertyValue('--brand-accent')).toBe(PRODUCT_GOLD)
+      expect(root.style.getPropertyValue('--brand-accent-foreground')).toBe(PRODUCT_GOLD_FOREGROUND)
+      expect(contrastRatio(PRODUCT_GOLD, PRODUCT_GOLD_FOREGROUND)).toBeGreaterThanOrEqual(TEXT_CONTRAST)
       expect(icon.getAttribute('href')).toBe('/favicon.svg')
       expect(productLogoUrl(product)).toBe(PRODUCT_LOGO_URL)
       expect(faviconUrl(product)).toBe('/favicon.svg')
@@ -237,6 +240,7 @@ describe('dourado e tema de cliente (D-126)', () => {
     for (const client of [brand({ color: '#1e3a5f', customColor: true }), brand({ logoUrl: '/brand/logo.png' })]) {
       applyBrand(root, client)
       expect(root.style.getPropertyValue('--brand-accent')).toBe(client.color)
+      expect(root.style.getPropertyValue('--brand-accent-foreground')).toBe(brandPalette(client.color).foreground)
       expect(icon.getAttribute('href')).toBe('/favicon-mono.svg')
       expect(productLogoUrl(client)).toBe(PRODUCT_LOGO_MONO_URL)
     }

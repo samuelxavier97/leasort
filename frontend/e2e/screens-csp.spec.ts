@@ -1,4 +1,5 @@
 import { adminCredentials, expect, test } from './support/fixtures.ts'
+import { openFromMenu } from './support/screens.ts'
 
 const ADMIN_MENU = [
   'Dashboard',
@@ -22,11 +23,11 @@ const PROSPECTOR_MENU = ['Dashboard', 'Meus Leads', 'Agenda', 'Convites', 'Chega
 test('E5: as telas de cada perfil abrem sem violar a Content-Security-Policy', async ({ world }) => {
   const admin = await world.loggedIn('ADMIN', adminCredentials())
   for (const label of ADMIN_MENU) {
-    await admin.getByRole('link', { name: label, exact: true }).click()
+    await openFromMenu(admin, label)
     await expect(admin.getByRole('heading', { level: 1 })).toBeVisible()
   }
   // Diálogo do Radix, que injeta <style>. O aviso do sonner, que também injeta, aparece no E1 e no E3.
-  await admin.getByRole('link', { name: 'Usuários', exact: true }).click()
+  await openFromMenu(admin, 'Usuários')
   await admin.getByRole('button', { name: 'Novo usuário' }).click()
   const form = admin.getByRole('dialog', { name: 'Novo usuário' })
   await expect(form).toBeVisible()

@@ -4,7 +4,7 @@ export const VISIT_STATUS_LABELS: Record<VisitStatus, string> = {
   SCHEDULED: 'Agendada',
   COMPLETED: 'Realizada',
   CANCELLED: 'Cancelada',
-  NO_SHOW: 'Não compareceu',
+  NO_SHOW: 'Sem comparecimento',
 }
 
 export const RELATIONSHIP_LABELS: Record<Relationship, string> = {

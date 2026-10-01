@@ -23,7 +23,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   VISIT_UPDATED: 'Visita alterada',
   VISIT_RESCHEDULED: 'Visita remarcada',
   VISIT_CANCELLED: 'Visita cancelada',
-  VISIT_NO_SHOW: 'Não compareceu',
+  VISIT_NO_SHOW: 'Sem comparecimento',
   INVITATION_CREATED: 'Convite criado',
   INVITATION_REISSUED: 'Convite reemitido',
   INVITATION_CANCELLED: 'Convite cancelado',
@@ -95,7 +95,7 @@ const EXPORT_LABELS: Record<string, string> = {
 const CAUSE_LABELS: Record<string, string> = {
   VISIT_SCHEDULED: 'Visita agendada',
   VISIT_CANCELLED: 'Visita cancelada',
-  VISIT_NO_SHOW: 'Não compareceu',
+  VISIT_NO_SHOW: 'Sem comparecimento',
   ACCESS_REGISTERED: 'Entrada registrada',
   LEAD_DISCARDED: 'Lead descartado',
   VISIT_RESCHEDULED: 'Visita remarcada',

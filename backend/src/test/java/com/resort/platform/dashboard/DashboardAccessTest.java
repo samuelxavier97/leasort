@@ -21,15 +21,18 @@ import tools.jackson.databind.JsonNode;
 /** Perfis, escopo e efeitos das rotas do dashboard (§11, D-098). */
 class DashboardAccessTest extends DashboardTestSupport {
 
-    private static final List<String> ROUTES = List.of(
-            "/api/dashboard/summary", "/api/dashboard/visits-by-day", "/api/dashboard/access-by-day");
+    private static final List<String> ROUTES = List.of("/api/dashboard/summary", "/api/dashboard/visits-by-day",
+            "/api/dashboard/denials", "/api/dashboard/prospector-performance");
+
+    /** Só do ADMIN (D-128, D-129). */
+    private static final List<String> ADMIN_ONLY = List.of("/api/dashboard/denials", "/api/dashboard/prospector-performance");
 
     @Autowired
     EntityManagerFactory entityManagerFactory;
 
     // D1
     @Test
-    void gateAndHostAreForbiddenAnonymousIsUnauthorizedAndAccessByDayIsAdminOnly() throws Exception {
+    void gateAndHostAreForbiddenAnonymousIsUnauthorizedAndDenialsAndPerformanceAreAdminOnly() throws Exception {
         for (Role role : List.of(Role.GATE, Role.HOST)) {
             ApiClient client = loggedIn(role);
             for (String route : ROUTES) {
@@ -39,7 +42,12 @@ class DashboardAccessTest extends DashboardTestSupport {
         for (String route : ROUTES) {
             client().get(route).andExpect(status().isUnauthorized());
         }
-        loggedInProspector().client().get("/api/dashboard/access-by-day").andExpect(status().isForbidden());
+        ApiClient prospector = loggedInProspector().client();
+        for (String route : ADMIN_ONLY) {
+            prospector.get(route).andExpect(status().isForbidden());
+        }
+        // A rota antiga saiu (D-129).
+        admin().get("/api/dashboard/access-by-day").andExpect(status().isNotFound());
     }
 
     // D2
@@ -76,7 +84,11 @@ class DashboardAccessTest extends DashboardTestSupport {
         assertThat(biaSummary.get("scheduledVisits").asLong()).isZero();
         assertThat(biaSummary.get("completedVisits").asLong()).isEqualTo(1);
         assertThat(biaSummary.get("upcomingVisits")).isEmpty();
-        assertThat(anaSummary.propertyNames()).doesNotContain("totalLeads", "assignedLeads", "noShows", "cancellations", "entries");
+        assertThat(anaSummary.propertyNames()).doesNotContain("totalLeads", "assignedLeads", "cancellations", "entries");
+        assertThat(anaSummary.get("todayVisits")).hasSize(1);
+        assertThat(anaSummary.get("todayVisits").get(0).get("visitId").asString()).isEqualTo(anaVisit.visitId().toString());
+        assertThat(biaSummary.get("todayVisits")).hasSize(1);
+        assertThat(biaSummary.get("todayVisits").get(0).get("visitId").asString()).isEqualTo(biaVisit.visitId().toString());
 
         assertThat(day(visitsByDay(ana.client()), day).get("completed").asLong()).isEqualTo(1);
         assertThat(day(visitsByDay(ana.client(), period(day, day.plusDays(1))), day.plusDays(1)).get("scheduled").asLong())
@@ -100,7 +112,8 @@ class DashboardAccessTest extends DashboardTestSupport {
         summary(admin);
         summary(admin, "prospectorId=" + me.prospector().getId());
         visitsByDay(admin);
-        accessByDay(admin);
+        denials(admin);
+        performance(admin);
         summary(me.client());
         visitsByDay(me.client());
 
@@ -137,7 +150,9 @@ class DashboardAccessTest extends DashboardTestSupport {
                 () -> run(() -> summary(admin)),
                 () -> run(() -> summary(admin, "prospectorId=" + me.prospector().getId())),
                 () -> run(() -> visitsByDay(admin)),
-                () -> run(() -> accessByDay(admin)),
+                () -> run(() -> denials(admin)),
+                () -> run(() -> denials(admin, "prospectorId=" + me.prospector().getId())),
+                () -> run(() -> performance(admin)),
                 () -> run(() -> summary(me.client())),
                 () -> run(() -> visitsByDay(me.client())));
         long[] counts = new long[requests.size()];
@@ -170,7 +185,7 @@ class DashboardAccessTest extends DashboardTestSupport {
     @Test
     void unknownProspectorFilterIsNotFound() throws Exception {
         ApiClient admin = admin();
-        for (String route : ROUTES) {
+        for (String route : List.of("/api/dashboard/summary", "/api/dashboard/visits-by-day", "/api/dashboard/denials")) {
             admin.get(route + "?prospectorId=" + UUID.randomUUID())
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("PROSPECTOR_NOT_FOUND"));

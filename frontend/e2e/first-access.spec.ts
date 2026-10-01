@@ -1,6 +1,7 @@
 import { request } from '@playwright/test'
 import { BASE_URL, IGNORE_HTTPS_ERRORS } from './support/api.ts'
 import { adminCredentials, expect, login, test } from './support/fixtures.ts'
+import { openFromMenu } from './support/screens.ts'
 
 /** E3: primeiro acesso com troca obrigatória e saída que invalida a sessão no servidor (§14, §24). */
 test('E3: usuário criado pelo ADMIN troca a senha no primeiro acesso, entra e, ao sair, a sessão deixa de valer', async ({
@@ -11,7 +12,7 @@ test('E3: usuário criado pelo ADMIN troca a senha no primeiro acesso, entra e, 
 
   // O ADMIN cria o usuário pela tela; a senha temporária aparece uma vez.
   const adminPage = await world.loggedIn('ADMIN', adminCredentials())
-  await adminPage.getByRole('link', { name: 'Usuários' }).click()
+  await openFromMenu(adminPage, 'Usuários')
   await adminPage.getByRole('button', { name: 'Novo usuário' }).click()
   const form = adminPage.getByRole('dialog', { name: 'Novo usuário' })
   await form.getByLabel('Nome').fill(name)

@@ -40,8 +40,10 @@ class DashboardSummaryTest extends DashboardTestSupport {
         clock.set(at(day, 12, 0));
 
         JsonNode mine = summary(admin, "prospectorId=" + me.prospector().getId());
-        assertThat(mine.propertyNames()).containsExactlyInAnyOrder("from", "to", "today", "totalLeads", "assignedLeads",
-                "scheduledVisits", "visitsToday", "activeInvitations", "completedVisits", "noShows", "cancellations", "entries");
+        assertThat(mine.propertyNames()).containsExactlyInAnyOrder("from", "to", "today", "greeting", "totalLeads",
+                "assignedLeads", "scheduledVisits", "visitsToday", "arrivedToday", "activeInvitations", "completedVisits",
+                "noShows", "cancellations", "entries", "previous", "todayVisits");
+        assertThat(mine.get("arrivedToday").asLong()).isEqualTo(1);
         assertThat(mine.get("today").asString()).isEqualTo(day.toString());
         assertThat(mine.get("totalLeads").asLong()).isEqualTo(6);
         assertThat(mine.get("assignedLeads").asLong()).isEqualTo(6);
@@ -241,5 +243,110 @@ class DashboardSummaryTest extends DashboardTestSupport {
         UUID other = loggedInProspector().prospector().getId();
         me.client().get("/api/dashboard/summary?" + period(day.minusDays(45), day) + "&prospectorId=" + other)
                 .andExpect(status().isForbidden());
+    }
+
+    // D15 (D-128): saudação pelo horário no fuso da operação.
+    @Test
+    void greetingFollowsTheOperationClock() throws Exception {
+        LocalDate day = uniqueDay();
+        ApiClient admin = admin();
+        ProspectorSession me = loggedInProspector();
+        int[][] cases = {{4, 59}, {5, 0}, {11, 59}, {12, 0}, {17, 59}, {18, 0}, {23, 30}};
+        String[] expected = {"EVENING", "MORNING", "MORNING", "AFTERNOON", "AFTERNOON", "EVENING", "EVENING"};
+        for (int i = 0; i < cases.length; i++) {
+            clock.set(at(day, cases[i][0], cases[i][1]));
+            assertThat(summary(admin).get("greeting").asString()).as("%02d:%02d", cases[i][0], cases[i][1]).isEqualTo(expected[i]);
+            assertThat(summary(me.client()).get("greeting").asString()).isEqualTo(expected[i]);
+        }
+        // 05:00 no fuso da operação é 08:00 em UTC: o relógio do servidor não decide.
+        assertThat(at(day, 5, 0).toString()).contains("T08:00");
+    }
+
+    // D16 (D-128): período anterior de mesmo tamanho, encostado no início do atual.
+    @Test
+    void previousPeriodHasTheSameLengthAndEndsTheDayBefore() throws Exception {
+        LocalDate day = uniqueDay();
+        ProspectorSession me = loggedInProspector();
+        ApiClient admin = admin();
+        ApiClient gate = gate();
+        // Período atual: D-4 a D (5 dias); anterior: D-9 a D-5.
+        Booking now = book(me, day.minusDays(2), 1);
+        enter(gate, now, at(day.minusDays(2), 9, 0));
+        Booking firstPrevious = book(me, day.minusDays(9), 2);
+        enter(gate, firstPrevious, at(day.minusDays(9), 9, 0));
+        Booking lastPrevious = book(me, day.minusDays(5), 0);
+        enter(gate, lastPrevious, at(day.minusDays(5), 9, 0));
+        markNoShow(book(me, day.minusDays(6), 0));
+        cancel(me, book(me, day.minusDays(7), 0));
+        // Fora dos dois: D-10.
+        markNoShow(book(me, day.minusDays(10), 0));
+        clock.set(at(day, 12, 0));
+        String scope = "prospectorId=" + me.prospector().getId();
+
+        JsonNode previous = summary(admin, scope, period(day.minusDays(4), day)).get("previous");
+        assertThat(previous.get("from").asString()).isEqualTo(day.minusDays(9).toString());
+        assertThat(previous.get("to").asString()).isEqualTo(day.minusDays(5).toString());
+        assertThat(previous.get("completedVisits").asLong()).isEqualTo(2);
+        assertThat(previous.get("noShows").asLong()).isEqualTo(1);
+        assertThat(previous.get("cancellations").asLong()).isEqualTo(1);
+        // Pessoas: 1 + 2 acompanhantes, mais 1.
+        assertThat(previous.get("entries").asLong()).isEqualTo(4);
+
+        JsonNode own = summary(me.client(), period(day.minusDays(4), day));
+        assertThat(own.get("completedVisits").asLong()).isEqualTo(1);
+        assertThat(own.get("noShows").asLong()).isZero();
+        assertThat(own.get("previous").propertyNames()).containsExactlyInAnyOrder("from", "to", "completedVisits", "noShows");
+        assertThat(own.get("previous").get("completedVisits").asLong()).isEqualTo(2);
+        assertThat(own.get("previous").get("noShows").asLong()).isEqualTo(1);
+
+        // Com o período máximo (366 dias), o anterior também tem 366.
+        JsonNode longest = summary(admin, scope, period(day.minusDays(365), day)).get("previous");
+        assertThat(longest.get("from").asString()).isEqualTo(day.minusDays(731).toString());
+        assertThat(longest.get("to").asString()).isEqualTo(day.minusDays(366).toString());
+    }
+
+    // D17 (D-128): visitas de hoje, as que chegaram pela entrada e depois as agendadas pelo nome.
+    @Test
+    void todayVisitsListArrivalsFirstThenScheduledByName() throws Exception {
+        LocalDate day = uniqueDay();
+        ProspectorSession me = loggedInProspector();
+        ProspectorSession other = loggedInProspector();
+        ApiClient admin = admin();
+        ApiClient gate = gate();
+        Booking late = book(me, day, 3);
+        Booking early = book(me, day, 2);
+        Booking waitingZ = book(me, day, 1);
+        Booking waitingA = book(me, day, 0);
+        jdbc.sql("UPDATE leads SET name = 'Zuleica Fictícia' WHERE id = :id").param("id", waitingZ.leadId()).update();
+        jdbc.sql("UPDATE leads SET name = 'Alda Fictícia' WHERE id = :id").param("id", waitingA.leadId()).update();
+        cancel(me, book(me, day, 0));
+        book(me, day.plusDays(1), 0);
+        book(other, day, 0);
+        enter(gate, late, late.companionIds().subList(0, 1), at(day, 10, 30));
+        enter(gate, early, at(day, 9, 15));
+        clock.set(at(day, 12, 0));
+
+        JsonNode list = summary(admin, "prospectorId=" + me.prospector().getId()).get("todayVisits");
+        assertThat(list.valueStream().map(v -> v.get("visitId").asString()).toList()).containsExactly(
+                early.visitId().toString(), late.visitId().toString(), waitingA.visitId().toString(),
+                waitingZ.visitId().toString());
+        JsonNode first = list.get(0);
+        assertThat(first.propertyNames()).containsExactlyInAnyOrder("visitId", "leadName", "prospectorName",
+                "companionsCount", "companionsPresent", "arrivedAt");
+        assertThat(first.get("prospectorName").asString()).isEqualTo(me.user().getName());
+        assertThat(first.get("companionsCount").asInt()).isEqualTo(2);
+        assertThat(first.get("companionsPresent").asInt()).isEqualTo(2);
+        assertThat(first.get("arrivedAt").asString()).isEqualTo(at(day, 9, 15).toString());
+        assertThat(list.get(1).get("companionsCount").asInt()).isEqualTo(3);
+        assertThat(list.get(1).get("companionsPresent").asInt()).isEqualTo(1);
+        assertThat(list.get(2).get("leadName").asString()).isEqualTo("Alda Fictícia");
+        assertThat(list.get(2).get("arrivedAt").isNull()).isTrue();
+        assertThat(list.get(2).get("companionsPresent").isNull()).isTrue();
+
+        JsonNode mine = summary(me.client());
+        assertThat(mine.get("todayVisits")).hasSize(4);
+        assertThat(mine.get("visitsToday").asLong()).isEqualTo(4);
+        assertThat(mine.get("arrivedToday").asLong()).isEqualTo(2);
+        assertThat(summary(other.client()).get("todayVisits")).hasSize(1);
     }
 }
