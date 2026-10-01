@@ -536,6 +536,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 ## D-092 — Acessos recentes
 
 - **Decisão:** `GET /api/access/recent` (GATE e ADMIN) devolve os registros de hoje em `APP_TIMEZONE`, do mais recente para o mais antigo, no máximo 50: `id`, `createdAt`, `result`, `denialReason`, `leadName` (quando há convite), `gate` e `validatedBy`. Nunca o código tentado nem CPF. A tela "Acessos" do ADMIN usa a mesma lista nesta fase (confirmado).
+- **Complemento (PR 2 da D-128):** a consulta tinha só o início do dia como limite; agora vai até o fim de hoje (limite exclusivo), para "hoje" ser só hoje. Os testes do dashboard gravam acessos com datas à frente e, numa ordem de execução do CI, tomavam os 50 lugares da lista e reprovavam o teste dos acessos recentes. Em produção, um registro com data à frente só viria de um relógio adiantado. O teste ganhou uma tentativa de amanhã, que não aparece.
 
 ## D-093 — Scanner da Portaria e contexto seguro
 
