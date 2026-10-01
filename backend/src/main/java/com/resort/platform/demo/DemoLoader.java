@@ -64,13 +64,14 @@ final class DemoLoader {
     private final SecureRandom secureRandom = new SecureRandom();
 
     /** Carrega a demonstração e devolve os totais gravados. */
-    Map<String, Integer> load(Connection connection, Clock clock, ZoneId zone, String gate, Passwords passwords) throws SQLException, Refused {
+    Map<String, Integer> load(Connection connection, Clock clock, ZoneId zone, String gate, Passwords passwords, String adminName)
+            throws SQLException, Refused {
         boolean autoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
         try {
             lockAndCheckEmpty(connection);
             Instant now = clock.instant();
-            DemoData data = DemoDataPlan.generate(LocalDate.ofInstant(now, zone), now, zone, DemoDataPlan.SEED, secureRandom);
+            DemoData data = DemoDataPlan.generate(LocalDate.ofInstant(now, zone), now, zone, DemoDataPlan.SEED, secureRandom, adminName);
             write(connection, data, gate, passwords);
             connection.commit();
             return totals(data);

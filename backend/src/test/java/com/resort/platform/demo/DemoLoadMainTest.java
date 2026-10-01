@@ -37,6 +37,7 @@ class DemoLoadMainTest {
         env.put("DB_USER", "resort_app");
         env.put("DB_PASSWORD", "nao-usada");
         env.put("APP_BOOTSTRAP_ADMIN_EMAIL", "admin@producao.local");
+        env.put("DEMO_ADMIN_NAME", "Carlos Eduardo Fictício");
         env.put("DEMO_ADMIN_PASSWORD", "senha-admin-demo");
         env.put("DEMO_PROSPECTOR_PASSWORD", "senha-prospector-demo");
         env.put("DEMO_GATE_PASSWORD", "senha-portaria-demo");
@@ -62,6 +63,28 @@ class DemoLoadMainTest {
     void theResetCheckHasTheSameLock(String value) {
         assertThat(run(env(value), "check-reset")).isEqualTo(DemoLoadMain.REFUSED);
         assertThat(errText()).contains("DEMO_INSTANCE=true");
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", "   ", "A", "Nome\nQuebrado", "Nome\tcom tab"})
+    void aMissingOrInvalidAdminNameIsRefusedBeforeConnecting(String name) {
+        Map<String, String> env = env("true");
+        env.put("DEMO_ADMIN_NAME", name);
+        if (name == null) {
+            env.remove("DEMO_ADMIN_NAME");
+        }
+        assertThat(run(env)).isEqualTo(DemoLoadMain.REFUSED);
+        assertThat(errText()).contains("DEMO_ADMIN_NAME").contains("Nada foi alterado");
+    }
+
+    @org.junit.jupiter.api.Test
+    void anAdminNameLongerThanTheColumnIsRefused() {
+        Map<String, String> env = env("true");
+        env.put("DEMO_ADMIN_NAME", "N".repeat(DemoLoadMain.MAX_NAME + 1));
+        assertThat(run(env)).isEqualTo(DemoLoadMain.REFUSED);
+        assertThat(DemoLoadMain.validName("N".repeat(DemoLoadMain.MAX_NAME))).isTrue();
+        assertThat(DemoLoadMain.validName("Ana")).isTrue();
     }
 
     @ParameterizedTest

@@ -89,6 +89,24 @@ export class World {
     return { id: created.user.id, name: created.user.name, email: `${tag}@e2e.local`, password, prospectorId: created.user.prospectorId }
   }
 
+  /** Um ADMIN com o nome dado (para conferir o cabeçalho com um nome comum); senha trocada pela API. */
+  async createAdmin(name: string): Promise<Person> {
+    const tag = `admin-${this.suffix}`.toLowerCase()
+    const created = await this.admin.json<{ user: { id: string }; temporaryPassword: string }>('POST', '/api/users', {
+      name,
+      email: `${tag}@e2e.local`,
+      role: 'ADMIN',
+      employeeCode: null,
+      phone: null,
+    })
+    const password = `E2e-${this.suffix}-senha`
+    const own = await Api.create()
+    await own.loginOk(`${tag}@e2e.local`, created.temporaryPassword)
+    await own.changePassword(created.temporaryPassword, password)
+    await own.dispose()
+    return { id: created.user.id, name, email: `${tag}@e2e.local`, password, prospectorId: null }
+  }
+
   /** Sessão da API como o usuário, para preparar dados que não são o foco do teste. */
   async apiAs(person: { email: string; password: string }): Promise<Api> {
     const api = await Api.create()

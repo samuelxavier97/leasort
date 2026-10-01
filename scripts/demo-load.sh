@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Carga da instalação de demonstração (D-125). Pede as senhas dos quatro usuários da demonstração sem eco
-# (ou usa as que já estiverem no ambiente, como faz o demo-reset.sh) e roda o serviço demo-load do compose.
+# Carga da instalação de demonstração (D-125). Pede o nome do ADMIN da demonstração e as senhas dos quatro
+# usuários, estas sem eco (ou usa os que já estiverem no ambiente, como faz o demo-reset.sh), e roda o
+# serviço demo-load do compose. Nenhum dos dois tem padrão no repositório.
 # A carga recusa, sem gravar nada, sem DEMO_INSTANCE=true e num banco com qualquer dado além do ADMIN
 # inicial; a pilha precisa ter subido uma vez, porque o backend cria o ADMIN inicial na subida.
 # Uso: scripts/demo-load.sh <arquivo .env.prod>
@@ -30,6 +31,12 @@ ask() { # ask <variável> <descrição>: usa o valor do ambiente ou pede sem eco
   [ "${#secret}" -ge 10 ] || { echo "demo-load: a senha do usuário $what precisa de no mínimo 10 caracteres. Nada foi alterado." >&2; exit 2; }
   export "$name=$secret"
 }
+if [ -z "${DEMO_ADMIN_NAME:-}" ]; then
+  [ -t 0 ] || { echo "demo-load: DEMO_ADMIN_NAME não informado e não há terminal para perguntar." >&2; exit 2; }
+  read -r -p "Nome do ADMIN da demonstração (aparece na saudação do dashboard): " DEMO_ADMIN_NAME
+fi
+[ "${#DEMO_ADMIN_NAME}" -ge 2 ] || { echo "demo-load: o nome do ADMIN da demonstração precisa de no mínimo 2 caracteres. Nada foi alterado." >&2; exit 2; }
+export DEMO_ADMIN_NAME
 ask DEMO_ADMIN_PASSWORD "ADMIN da demonstração"
 ask DEMO_PROSPECTOR_PASSWORD "Prospector da demonstração"
 ask DEMO_GATE_PASSWORD "Portaria da demonstração"

@@ -38,8 +38,13 @@ for _ in $(seq 60); do
 done
 compose run --rm -T demo-load check-reset || refuse "o banco tem usuários que não são da demonstração. Nada foi apagado."
 
-echo "==> 3/6 Senhas e confirmação"
-# As senhas antes de apagar: desistir aqui não perde nada. O demo-load.sh usa as exportadas.
+echo "==> 3/6 Nome do ADMIN, senhas e confirmação"
+# O nome e as senhas antes de apagar: desistir aqui não perde nada. O demo-load.sh usa os exportados.
+if [ -z "${DEMO_ADMIN_NAME:-}" ]; then
+  read -r -p "Nome do ADMIN da demonstração (aparece na saudação do dashboard): " DEMO_ADMIN_NAME
+fi
+[ "${#DEMO_ADMIN_NAME}" -ge 2 ] || refuse "o nome do ADMIN da demonstração precisa de no mínimo 2 caracteres. Nada foi apagado."
+export DEMO_ADMIN_NAME
 ask() { # ask <variável> <descrição>: usa o valor do ambiente ou pede sem eco
   local name="$1" what="$2" secret="${!1:-}"
   if [ -z "$secret" ]; then

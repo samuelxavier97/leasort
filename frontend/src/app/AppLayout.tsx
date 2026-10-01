@@ -95,7 +95,7 @@ export function AppLayout() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" title={me.name}>
-                  <span className="max-w-40 truncate">{me.name}</span>
+                  <span className="max-w-52 truncate" data-testid="header-user-name">{me.name}</span>
                   <ChevronDown />
                 </Button>
               </DropdownMenuTrigger>

@@ -345,7 +345,7 @@ Uma instalação só para apresentar o sistema, com dados fictícios (D-125). Nu
 cd /opt/resort && scripts/demo-load.sh .env.prod
 ```
 
-- O script pede, sem eco, as senhas dos quatro usuários da demonstração. Elas não ficam em arquivo.
+- O script pede o nome do ADMIN da demonstração (aparece na saudação do dashboard: "Boa tarde, Carlos") e, sem eco, as senhas dos quatro usuários. Nada disso fica em arquivo nem tem padrão no repositório; para não perguntar, exporte `DEMO_ADMIN_NAME` e as `DEMO_*_PASSWORD` antes.
 - A carga recusa, sem gravar nada, se o `.env.prod` não tiver `DEMO_INSTANCE=true` ou se o banco tiver qualquer dado além do ADMIN inicial.
 - No fim, mostra os totais gravados e os usuários: `admin.demo@example.com`, `prospector.demo@example.com`, `portaria.demo@example.com` e `anfitriao.demo@example.com`. Nenhum tem troca de senha obrigatória.
 - O ADMIN inicial continua sendo o do operador.
@@ -355,7 +355,7 @@ cd /opt/resort && scripts/demo-load.sh .env.prod
 - 8 Prospectores com desempenhos diferentes;
 - visitas realizadas, sem comparecimento e canceladas;
 - negativas na Portaria com os cinco motivos;
-- 2 visitas para hoje, as duas com acompanhantes: se a carga roda depois das 8h10, uma já aparece como chegada no dashboard, e a outra fica para a Portaria liberar ao vivo.
+- 5 ou 6 visitas para hoje: se a carga roda depois das 8h10, 3 ou 4 já aparecem como chegadas no dashboard, e 2, com acompanhantes, ficam para a Portaria liberar ao vivo.
 
 Leads e acompanhantes não têm CPF, os telefones usam o DDD 00 e os e-mails são de `example.com`.
 
@@ -368,6 +368,6 @@ cd /opt/resort && scripts/demo-reset.sh .env.prod
 A recarga **apaga o banco inteiro** e carrega a demonstração de novo. Antes de tocar em qualquer coisa:
 1. confere `DEMO_INSTANCE=true` no `.env.prod`;
 2. confere que todos os usuários do banco são os da demonstração ou o ADMIN inicial (`APP_BOOTSTRAP_ADMIN_EMAIL`);
-3. pede as senhas e o domínio digitado.
+3. pede o nome do ADMIN da demonstração, as senhas e o domínio digitado.
 
 Com um único usuário de fora, ela recusa sem apagar nada. Isso inclui um usuário criado pela tela de Usuários durante uma apresentação. Nesse caso, a recarga passa a ser manual: recrie o banco como no passo 3 do `scripts/restore.sh` e rode o `scripts/demo-load.sh`. Por isso, evite criar usuários durante a apresentação; para mostrar a tela, cancele no fim do formulário. O volume de backups não é tocado.

@@ -10,6 +10,7 @@ import com.resort.platform.demo.DemoDataPlan.DemoCompanion;
 import com.resort.platform.demo.DemoDataPlan.DemoData;
 import com.resort.platform.demo.DemoDataPlan.DemoInvitation;
 import com.resort.platform.demo.DemoDataPlan.DemoLead;
+import com.resort.platform.demo.DemoDataPlan.DemoUser;
 import com.resort.platform.demo.DemoDataPlan.DemoVisit;
 import com.resort.platform.invitations.InvitationStatus;
 import com.resort.platform.leads.LeadStatus;
@@ -43,9 +44,10 @@ import org.junit.jupiter.params.provider.ValueSource;
 class DemoDataPlanTest {
 
     private static final ZoneId ZONE = ZoneId.of("America/Sao_Paulo");
+    private static final String ADMIN_NAME = "Nome Fictício do Administrador";
 
     private static DemoData generate(ZonedDateTime now) {
-        return DemoDataPlan.generate(now.toLocalDate(), now.toInstant(), ZONE, DemoDataPlan.SEED, new SecureRandom());
+        return DemoDataPlan.generate(now.toLocalDate(), now.toInstant(), ZONE, DemoDataPlan.SEED, new SecureRandom(), ADMIN_NAME);
     }
 
     private static final ZonedDateTime WEDNESDAY_AFTERNOON = ZonedDateTime.of(2026, 9, 30, 15, 0, 0, 0, ZONE);
@@ -210,9 +212,22 @@ class DemoDataPlanTest {
         assertThat(DemoDataPlan.HISTORY_DAYS).isEqualTo(180);
         assertThat(history.get(false).size() / (double) (DemoDataPlan.HISTORY_DAYS - weekendDays)).isBetween(2.7, 3.3);
         assertThat(history.get(true).size() / (double) weekendDays).isBetween(10.5, 11.5);
-        // Hoje: uma já entrou, a outra espera a Portaria.
-        assertThat(finals.stream().filter(v -> v.date().equals(today))).hasSize(DemoDataPlan.VISITS_TODAY)
-                .extracting(DemoVisit::status).containsExactlyInAnyOrder(VisitStatus.COMPLETED, VisitStatus.SCHEDULED);
+        // Hoje: 5 ou 6, perto da média; 3 ou 4 já entraram, e 2 esperam a Portaria, com acompanhantes.
+        List<DemoVisit> todays = finals.stream().filter(v -> v.date().equals(today)).toList();
+        assertThat(todays.size()).isBetween(5, 6);
+        assertThat(todays.stream().filter(v -> v.status() == VisitStatus.SCHEDULED)).hasSize(DemoDataPlan.PENDING_TODAY);
+        assertThat(todays.stream().filter(v -> v.status() == VisitStatus.COMPLETED).count()).isBetween(3L, 4L);
+        Set<UUID> pending = todays.stream().filter(v -> v.status() == VisitStatus.SCHEDULED).map(DemoVisit::id).collect(Collectors.toSet());
+        assertThat(data.companions().stream().filter(c -> pending.contains(c.visitId())).map(DemoCompanion::visitId).distinct())
+                .hasSize(DemoDataPlan.PENDING_TODAY);
+        // As entradas de hoje se espalham das 8h até antes da carga (15h).
+        assertThat(data.accesses().stream().filter(a -> a.entryAt() != null && LocalDate.ofInstant(a.entryAt(), ZONE).equals(today))
+                .map(a -> a.entryAt().atZone(ZONE).toLocalTime()))
+                .hasSizeBetween(3, 4)
+                .allMatch(time -> !time.isBefore(java.time.LocalTime.of(8, 0)) && time.isBefore(java.time.LocalTime.of(14, 50)));
+        // O ADMIN da demonstração tem o nome informado na carga.
+        assertThat(data.users().stream().filter(u -> u.email().equals(DemoDataPlan.ADMIN_EMAIL)).map(DemoUser::name))
+                .containsExactly(ADMIN_NAME);
         assertThat(finals.stream().filter(v -> v.date().isAfter(today))).isNotEmpty();
         // Uma das visitas de hoje tem acompanhantes, para a Portaria marcar a presença ao vivo.
         Set<UUID> todayIds = finals.stream().filter(v -> v.date().equals(today)).map(DemoVisit::id).collect(Collectors.toSet());
@@ -272,7 +287,7 @@ class DemoDataPlanTest {
         ZonedDateTime early = ZonedDateTime.of(2026, 9, 30, 7, 30, 0, 0, ZONE);
         DemoData data = generate(early);
         assertThat(data.visits().stream().filter(v -> v.date().equals(early.toLocalDate())))
-                .hasSize(DemoDataPlan.VISITS_TODAY)
+                .hasSizeBetween(5, 6)
                 .allMatch(v -> v.status() == VisitStatus.SCHEDULED);
     }
 }

@@ -37,11 +37,7 @@
 }
 
 :root {
-  /* Séries dos gráficos do dashboard: slots categóricos 1–4 da paleta validada (D-100). */
-  --series-1: #2a78d6;
-  --series-2: #eb6834;
-  --series-3: #1baf7a;
-  --series-4: #eda100;
+  /* As cores das séries ficam em features/dashboard/series.ts, pelo significado (D-100 revisada). */
   --chart-surface: #ffffff;
   /* Resultado da Portaria (D-120): cores fixas, fora do tema do cliente, sempre com ícone e texto.
      Texto branco: 5,02:1 no verde e 6,47:1 no vermelho. */
@@ -80,10 +76,6 @@
 }
 
 .dark {
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --series-4: #c98500;
   --chart-surface: #1a1a19;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
