@@ -598,3 +598,560 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
 - **Revisada na v0.3.0 (pedido na revisão das capturas): cores de "Visitas por dia" pelo significado.** Antes, "Sem comparecimento" saía em verde e "Realizadas" em laranja, o que invertia o sentido para quem lê. Agora, todas da paleta de referência: Realizadas no azul do slot 1 (`#2a78d6`); Agendadas, que são futuras, no azul claro da rampa sequencial (passo 250, `#86b6ef`); Sem comparecimento no laranja do slot 2 (`#eb6834`); Cancelamentos no cinza neutro (`#898781`). Nenhum resultado ruim em verde. As cores ficam em `features/dashboard/series.ts`, fixas e fora do tema do cliente (D-120); as variáveis `--series-1` a `--series-4` do `index.css` saíram, sem outro uso.
   - **Validador para daltônicos** (`validate_palette.js`, contra o fundo branco do gráfico), em todos os pares e não só os vizinhos, porque numa pilha a série do meio pode ser zero: separação para daltônicos (protanopia e deuteranopia) com ΔE mínimo de 9,8 (alvo ≥ 8; antes, 9,1 entre vizinhos); separação na visão normal com mínimo de 17,6 (piso 15); faixa de luminosidade dentro. O azul claro tem contraste de 2,11:1 com o branco (aviso: alívio pela legenda sempre visível, o tooltip e "Ver tabela", que já existem).
   - **O que o validador marca e foi aceito:** o piso de saturação (croma ≥ 0,10) acusa o azul claro (0,097) e o cinza (0,009). É o pedido: as duas séries que não são resultado (futuras e canceladas) recuam, e a separação continua garantida pelas outras medidas. Descartados: âmbar para Cancelamentos (13,7 contra o laranja na visão normal, abaixo do piso de 15) e um azul claro mais saturado (`#6da7ec`, 14,9 contra o azul principal).
+
+## D-101 — Exportações CSV
+
+- **Decisão:** `GET /api/exports/{leads|visits|companions|access}`, só ADMIN, com `from`, `to`, `status` e `prospectorId` opcionais. Sem período, todo o histórico, sem limite de dias (confirmado); com período, as duas datas, `from ≤ to`, em dias de `APP_TIMEZONE` com os dois extremos incluídos. Só uma data ou `from > to`: 400 `VALIDATION_ERROR`; data ou status malformado (inclusive status de outro arquivo): 400 `BAD_REQUEST`; `prospectorId` inexistente: 404 `PROSPECTOR_NOT_FOUND`.
+- **Arquivos** (cabeçalho em português; datas DD/MM/AAAA, data e hora DD/MM/AAAA HH:mm no fuso da operação; status, motivos e parentesco com os rótulos da interface; CPF completo e formatado `000.000.000-00`, para o Excel não tratá-lo como número):
+  - `leads-AAAA-MM-DD.csv`: ID; Nome; CPF; Telefone; E-mail; Nascimento; Status; Prospector; Criado em. Período pelo `created_at`; status do Lead (inclui Descartado); Prospector pelo dono atual (como os Leads do dashboard, D-098).
+  - `visitas-AAAA-MM-DD.csv`: ID; Lead; CPF do Lead; Prospector; Data; Status; Motivo do cancelamento; Acompanhantes; Entrada em. Período pela data da visita; status da visita; Prospector pelo responsável (D-013). O motivo vem do `cancel_reason` (Cancelada pelo usuário, Remarcação, Lead descartado); a visita antiga de uma remarcação aparece como Cancelada, motivo Remarcação.
+  - `acompanhantes-AAAA-MM-DD.csv`: ID da visita; Data da visita; Lead; Nome; CPF; Nascimento; Parentesco; Presente. "Data da visita" acrescentada à §18 (confirmado). Filtros como os de visitas. "Presente" é Sim ou Não só na visita realizada; vazio nos demais status (confirmado).
+  - `acessos-AAAA-MM-DD.csv`: Data e hora; Resultado; Motivo; Lead; Porteiro; Portaria; Acompanhantes presentes. Período pelo `created_at` da tentativa (numa entrada, igual ao `entry_at`); status é o resultado; Prospector pelo responsável da visita do convite, e com esse filtro a negativa sem convite (`INVALID_CODE`) sai, como no dashboard. `INVALID_CODE` aparece sem Lead. O código tentado nunca é lido nem escrito (D-044).
+- **Formato (D-019, D-068):** BOM UTF-8, separador `;`, CRLF, `text/csv; charset=UTF-8`, `Content-Disposition: attachment` com o nome e a data de hoje em `APP_TIMEZONE`, `Cache-Control: no-store`. Cada célula passa primeiro pela proteção contra fórmula e depois pelas aspas do RFC 4180: o valor que começa com `=`, `+`, `-`, `@`, `\t` ou `\r` recebe o prefixo `'`; o que contém `;`, `"`, `\n`, `\r` ou `\t` sai entre aspas, com as aspas dobradas. Com `\t` ou `\r` no início, o apóstrofo fica dentro das aspas. A regra é única, sem exceção por coluna (confirmado): um telefone `+55 …` sai como `'+55 …`, e o apóstrofo fica visível no Excel e no sistema que importar o arquivo.
+- **Auditoria e streaming (confirmado na aprovação):** o controller captura o id do ADMIN e o IP. Na thread da requisição, o service abre uma conexão própria em REPEATABLE READ somente leitura, conta as linhas e grava `EXPORT_GENERATED` numa transação própria (`entity_type = 'EXPORT'`, metadata `{ type, filters: { from, to, status, prospectorId }, rows }`, sem nenhum dado pessoal), confirmada antes do primeiro byte. Se a auditoria falhar, a conexão é devolvida e a resposta é erro (Problem Details), sem nenhuma linha. Depois, o corpo (`StreamingResponseBody`, em outra thread) lê as linhas do mesmo instantâneo da contagem com cursor (`fetchSize` 500) e escreve direto na resposta, sem carregar entidades nem montar o arquivo em memória. É a exceção à regra de auditar na mesma transação: auditar no fim perderia o registro de um download interrompido depois de parte dos dados ter saído. O `rows` da auditoria é exato mesmo com escrita concorrente: a contagem e o envio usam a mesma conexão e a mesma transação REPEATABLE READ, passada da thread da requisição para a do streaming, e só a auditoria roda numa transação à parte (testado em `ExportConsistencyTest`, com um Lead gravado entre a auditoria e o primeiro byte).
+- **Tempo-limite e conexão:** `spring.mvc.async.request-timeout: 30m` (o padrão do Tomcat, 30 s, cortaria o download da base inteira). A conexão do banco fica presa durante todo o download e volta ao pool no fim, também se o cliente desistir; é aceito, porque as exportações são raras e só do ADMIN.
+
+## D-102 — Consulta da auditoria
+
+- **Decisão:** `GET /api/audit`, só ADMIN, com `from` e `to` pelo `created_at` em `APP_TIMEZONE` (padrão dos 30 dias até hoje, máximo de 366, `PERIOD_TOO_LONG`), `userId`, `action` (validada contra `AuditAction`), `entityType` (validado contra `USER`, `PROSPECTOR`, `LEAD`, `VISIT`, `INVITATION`, `ACCESS_RECORD`, `EXPORT`) e `entityId`; valor inválido é 400 `VALIDATION_ERROR`. Paginação com `page` e `size` (máximo 100), da mais recente para a mais antiga (`created_at` e `id` decrescentes). Cada linha: `id`, `createdAt`, `userId`, `userName` ("Sistema" quando `user_id` é nulo), `action`, `entityType`, `entityId`, `metadata` (objeto JSON) e `ipAddress`, numa consulta com junção a `users`.
+- **A consulta não é auditada (confirmado):** a §19 não lista essa ação e o CHECK de `audit_logs.action` não a aceita.
+
+## D-103 — Telas de Exportações e Auditoria
+
+- **Decisão:** menu do ADMIN na ordem da §16.1, com "Exportações" antes de "Usuários" e "Auditoria" por último; as duas rotas são só do ADMIN.
+- **Exportações (`/exportacoes`):** um bloco por arquivo, com descrição, a data que o período usa, período (as duas datas ou nenhuma), status do próprio arquivo (do Lead, da visita ou o resultado do acesso) e Prospector. Só os filtros preenchidos vão na URL. O download usa `fetch` com a sessão, salva com o nome do `Content-Disposition` e revoga a URL do Blob logo depois, porque o arquivo traz CPF completo. Período com uma data só ou invertido bloqueia o botão; erros da API aparecem em português no bloco.
+- **Auditoria (`/auditoria`):** filtros de período (iniciando nos 30 dias até hoje, D-080), usuário, ação e entidade, com rótulos em português; trocar um filtro volta à primeira página, e a paginação mantém os filtros. Tabela com data e hora no fuso da operação, usuário ("Sistema" vem da API), ação, entidade com o início do id, detalhes e IP. O metadata aparece como pares "Chave: valor" em português, com status, causas e tipos traduzidos, datas em DD/MM/AAAA, sem os valores nulos, e objetos aninhados como "Filtros · Chave". A ordem de leitura segue uma lista fixa de chaves, porque o `jsonb` do PostgreSQL reordena as chaves (achado na verificação manual); chaves desconhecidas vêm depois, como vieram. Metadata vazio é "—".
+
+## D-104 — E2E com Playwright
+
+- **Decisão:** `scripts/e2e.sh`, fora do `verify.sh`, e um job `e2e` no `ci.yml`, em paralelo ao `verify`, nos mesmos gatilhos (confirmado). O script:
+  - recusa começar com as portas 5433, 8080 ou 4173 ocupadas, ou com `waitForTimeout` em `frontend/e2e`;
+  - gera o jar sem testes e o build do frontend (`E2E_SKIP_BUILD=1` reaproveita os dois);
+  - sobe um PostgreSQL 16 descartável, com os dados em memória (`--tmpfs`), apagado no fim em qualquer caso: sucesso, falha de teste ou interrupção (Ctrl+C, SIGTERM do CI). A limpeza para o `vite preview` e o backend e espera cada um sair (SIGKILL depois de 30 s), antes de remover o container;
+  - sobe o jar com perfil `dev`, apontado para esse banco, e o build de produção no `vite preview`, que repassa `/api` para a 8080 (sem mudar o `vite.config`, confirmado);
+  - gera a senha inicial e a senha final do ADMIN a cada execução.
+- **Onde fica o código:** `frontend/e2e` e `frontend/playwright.config.ts`, com `@playwright/test` fixado em `1.63.0`. O Vitest só lê `src/**/*.test.{ts,tsx}`, e o `tsconfig.e2e.json` põe o E2E no typecheck e no lint. `E2E_CHROMIUM_PATH` permite usar um Chromium já instalado; o CI usa o do `playwright install`.
+- **Banco limpo e dados:** o perfil `dev` não carrega dados de exemplo; só o `BootstrapAdminInitializer` roda na subida, e ele cria o ADMIN inicial. A preparação global confere isso antes dos testes: 1 usuário e nenhum Lead, visita ou convite. Depois ela:
+  - faz o login do ADMIN, esperando o login funcionar em vez do health, por causa da D-059, com no máximo 4 tentativas para não chegar ao limite de login;
+  - troca a senha inicial;
+  - recusa rodar entre 23:55 e 00:20 no fuso da operação, porque os fluxos agendam para hoje e o job noturno roda às 00:15 (confirmado).
+
+  Cada teste cria os próprios usuários e Leads pela API: nomes "… E2E <sufixo>", CPFs válidos gerados por algoritmo e e-mails `@e2e.local`. A troca da senha provisória também é pela API. Nenhum teste depende de outro, e o limite de 30 validações por minuto por porteiro não interfere na repetição.
+- **Contextos e esperas:**
+  - um contexto de navegador por perfil, com login pela tela, fuso `America/Sao_Paulo` e `pt-BR`;
+  - a Portaria usa o viewport do Pixel 7 e fica sem permissão de câmera, então a validação é pela digitação;
+  - só esperas por condição, sem novas tentativas (`retries: 0`);
+  - a chegada para o anfitrião é esperada por até 35 s: o intervalo de 30 s mais a folga da requisição.
+- **Testes:**
+  - E1, o fluxo da §23. Lead e acompanhantes têm CPF, e a ficha é conferida, na página e na resposta da API, sem o CPF com e sem pontuação e sem os 6 dígitos que a máscara mostraria.
+  - E2, remarcação e reemissão invalidando o código anterior.
+  - E3, primeiro acesso com troca obrigatória, e saída que invalida a sessão no servidor.
+  - E4, leitura do QR real pela câmera simulada do Chromium: o PNG da API vira um vídeo Y4M decodificado num canvas, sem dependência nova. O vídeo fica num diretório temporário, porque o Chromium não abre o arquivo num caminho com acentos (achado na implementação). O navegador da câmera é o Chromium completo (`channel: 'chromium'`): no `chromium-headless-shell`, padrão do Playwright para testes headless, a câmera simulada não leu o QR no CI; com o Chromium completo, passou.
+- **Estabilidade (medida em 2026-09-26):** 20 repetições da suíte com 4 workers passaram (80 de 80, 5,4 min). Em cada teste:
+
+  | Teste | Tempo |
+  |---|---|
+  | E1 | 36 a 43 s (quase tudo é a espera pela consulta de 30 s) |
+  | E2 | 7 a 14 s |
+  | E3 | 5 a 9 s |
+  | E4 | 5 a 12 s |
+
+  Uma execução do script com jar e build prontos leva cerca de 1 min. O E4 ficaria de fora se não passasse nas 20 repetições (condição da aprovação).
+- **`dev` do E2E × `prod`:**
+
+  | Ponto | E2E (`dev`) | `prod` |
+  |---|---|---|
+  | Cookies de sessão e `XSRF-TOKEN` | sem `Secure`, por HTTP | `Secure`, só com HTTPS (D-054) |
+  | Swagger e `/v3/api-docs` | ligados (D-056) | inexistentes |
+  | Credenciais | valores padrão fictícios, trocados pelo script | variáveis obrigatórias, sem padrão (D-052) |
+  | IP do cliente | o do `vite preview` (127.0.0.1) | via `forward-headers-strategy: native` atrás do Nginx |
+  | Servidor da frente | `vite preview` | Nginx |
+  | Nome do Resort | sem meta preenchida (nome padrão "Resort") | `RESORT_NAME` injetada pelo Nginx (D-087) |
+  | Dados de exemplo | nenhum | nenhum |
+  | Job noturno e fuso | ligado, `APP_TIMEZONE` padrão | iguais |
+- **O que o E2E não cobre:**
+  - HTTPS e Nginx, com seus cabeçalhos (HSTS, CSP, `Permissions-Policy`, `X-Content-Type-Options`);
+  - cookies `Secure`;
+  - o IP real atrás do proxy, a prontidão da D-059 e o usuário do banco sem ownership (D-057), todos da Fase 11;
+  - navegadores além do Chromium, como o Safari do iPhone;
+  - câmeras e aparelhos reais: o Pixel 7 é só o viewport;
+  - a Web Share API;
+  - a impressão A4 da ficha (verificação manual, D-097).
+- **Acréscimos (Fase 11a):**
+  - **E5** percorre as telas de cada perfil.
+  - **E6** baixa e compartilha a imagem do convite (D-087): "Baixar", "Compartilhar" sem Web Share API (baixa) e "Compartilhar" com a Web Share API simulada. Nos três casos, confere que o arquivo é um PNG de 1080 × 1440 cujo QR decodifica `RSV:<código>`, com o `@zxing/library` (já no projeto pelo `@zxing/browser`, agora declarado como devDependency na mesma versão).
+  - Todos os contextos reprovam qualquer violação de CSP.
+  - `E2E_BASE_URL` roda a suíte contra a pilha de produção por HTTPS (D-105), e `E2E_SENSITIVE_FILE` registra os CPFs e códigos usados (D-111).
+
+## D-105 — Imagens e pilha de produção
+
+- **Imagens:** bases fixadas por digest. Argumentos de build (`JDK_IMAGE`, `JRE_IMAGE`, `NODE_IMAGE`, `NGINX_IMAGE`) permitem trocar o registro, por exemplo por um espelho, sem editar os arquivos.
+  - **Backend** (`backend/Dockerfile`): build com `eclipse-temurin:21-jdk-alpine` e runtime com `eclipse-temurin:21-jre-alpine`. O jar é extraído nas camadas do Spring Boot como `app.jar`, e o processo roda como o usuário `app` (uid 10001), com `TZ=UTC` e perfil `prod`.
+  - **Nginx de borda** (`nginx/Dockerfile`, contexto na raiz): build do frontend com `node:22-alpine` e serviço com `nginxinc/nginx-unprivileged` (uid 101), com o nome do Resort injetado na subida (D-087).
+- **`docker-compose.prod.yml`:**
+  - Serviços: `postgres`, `migrate` (D-057), `backend` e `nginx`, todos numa rede interna com sub-rede fixa. Só o Nginx publica porta.
+  - Ordem de subida: o backend espera o postgres saudável e o `migrate` concluído; o Nginx espera o backend saudável, pelo readiness (D-059).
+  - Todos os serviços têm `json-file` com `max-size` de 10 MB e `max-file` 5. Os de longa duração têm `restart: unless-stopped`, healthcheck e limite de memória.
+  - As variáveis obrigatórias param a subida se faltarem. O modelo é o `.env.prod.example`, sem nenhum valor real, separado do `.env.example` de desenvolvimento (confirmado).
+- **Memória** (meta de 2 GB, confirmado):
+
+  | Serviço | Limite | Ajustes |
+  |---|---|---|
+  | backend | 768 MB | `-XX:MaxRAMPercentage=60` (heap máximo medido: 462 MB), `-XX:+UseSerialGC`, `-Xss512k`, `-XX:+ExitOnOutOfMemoryError` |
+  | postgres | 512 MB | `shared_buffers=128MB`, `effective_cache_size=384MB`, `work_mem=4MB`, `maintenance_work_mem=64MB`, `max_connections=30` |
+  | nginx | 64 MB | — |
+  | migrate | 384 MB | — |
+
+  Perfil de 1 GB, documentado no `.env.prod.example`: backend com 448 MB, postgres com 256 MB e `shared_buffers=64MB`, mais 1 GB de swap. Uso medido na verificação, logo depois do login e da criação de um Lead: backend com cerca de 310 MB, postgres com 48 MB e nginx com 5 MB.
+- **Verificação** (`scripts/prod-check.sh`, job `prod-stack` do CI em paralelo aos demais; vira check obrigatório depois de três execuções verdes):
+  - constrói as imagens e sobe a pilha com um `.env` descartável e senhas aleatórias, na porta 18080;
+  - confere a configuração do compose, a subida e o `migrate`, o login logo depois do readiness, os cookies `Secure`, a troca de senha e a criação de Lead como `resort_app`, o health público, os 404 do actuator, os usuários sem root, o nome do Resort e a memória;
+  - derruba tudo e apaga os volumes em qualquer saída.
+
+  Mutações detectadas: o backend publicando uma porta e o nome sem o escape das aspas. O HTTPS, os cabeçalhos, o IP real, o backup e o runbook entram nos PRs 2 e 3.
+
+## D-106 — "Hoje" da operação na validação de datas e na importação
+
+- **Contexto:** na releitura da Fase 11, dois pontos comparavam com o dia do fuso da JVM, e não com o de `APP_TIMEZONE`:
+  - a importação de Leads (`LocalDate.now()`);
+  - o `@PastOrPresent` do nascimento de Lead e acompanhante, cujo relógio padrão é o do sistema.
+
+  Num container em UTC, entre 21h e meia-noite em São Paulo, a data de amanhã passava como válida.
+- **Decisão:**
+  - O Bean Validation recebe um `ClockProvider` com o `Clock` da aplicação no fuso da operação (`ValidationConfigurationCustomizer` no `CommonConfig`).
+  - A importação usa o `BusinessCalendar.today()`.
+  - Os containers rodam com `TZ=UTC`, e o comportamento não depende disso.
+- **Testes:** o `OperationDayValidationTest` roda com o fuso padrão da JVM em `Pacific/Kiritimati` e o relógio às 22:30 de 19/09 em São Paulo (20/09 em UTC). Em Lead, acompanhante e importação, 19/09 é aceito e 20/09 é recusado. As mutações (o validador sem o relógio da operação e a importação com `LocalDate.now()`) derrubam os três casos.
+
+## D-107 — Nginx de borda: TLS, cabeçalhos, CSP, cache e limites
+
+- **Portas:**
+  - 8080 no container, publicada como 80, só responde ao desafio do Let's Encrypt (`/.well-known/acme-challenge/`, por HTTP) e ao healthcheck; todo o resto recebe 301 para HTTPS, com caminho e query;
+  - 8443, publicada como 443, é o HTTPS com HTTP/2.
+
+  Fora da porta 443, a verificação local mantém a porta no redirecionamento (`PUBLIC_HTTPS_PORT`).
+- **TLS:** configuração "intermediate" da Mozilla sem suítes DHE: só TLS 1.2 e 1.3, cifras ECDHE com AEAD, sem tickets de sessão. Sem OCSP stapling, porque o Let's Encrypt encerrou o OCSP em 2025.
+- **Cabeçalhos:** em todas as respostas, inclusive erros, com `always` e incluídos em cada location. O backend manda os mesmos pelo Spring Security; eles são escondidos (`proxy_hide_header`) para não sair em dobro, e o HSTS do Spring traria `includeSubDomains`.
+  - `Strict-Transport-Security: max-age=31536000`, com `includeSubDomains` e `preload` ligáveis por variável (confirmado);
+  - `Content-Security-Policy` (ver abaixo);
+  - `Permissions-Policy: camera=(self), microphone=(), geolocation=(), payment=(), usb=()` (D-093);
+  - `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` e `X-Frame-Options: DENY`.
+- **CSP:**
+
+  ```
+  default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob:;
+  connect-src 'self'; font-src 'self'; media-src 'self'; worker-src 'self'; object-src 'none';
+  base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  ```
+
+  - `style-src 'unsafe-inline'` é necessário porque o sonner e o Radix injetam `<style>` com conteúdo variável (confirmado); os scripts continuam só do próprio site.
+  - `img-src blob:` serve para o QR do convite. O vídeo da câmera usa `srcObject` e não precisa de `media-src blob:`; `data:` e `worker-src blob:`, previstos no plano, ficaram de fora porque nada os usa.
+  - O E2E registra as violações do console do Chromium em todos os contextos e reprova o teste em qualquer uma. A suíte inteira roda contra a pilha por HTTPS, inclusive o E5, que percorre as telas de cada perfil com gráficos e diálogo.
+  - A mutação que tirou `'unsafe-inline'` foi detectada pelo E2E.
+- **SPA e cache:**
+  - `try_files $uri /index.html` fora de `/api`, `/actuator` e `/v3`;
+  - `/assets/*` com `public, max-age=31536000, immutable`, e arquivo inexistente é 404;
+  - `index.html` e as rotas da SPA com `no-cache`.
+- **Rotas do backend:** só `/api/` e `/actuator/health` (encaminhado ao readiness interno, D-059) chegam a ele. `/actuator/*` e `/v3/*` dão 404.
+- **Limites:**
+  - `client_max_body_size 6m` em `/api/`: a importação de 4,9 MB passa, e 7 MB recebe 413 do próprio Nginx;
+  - `/api/exports/` com `proxy_buffering off` e `proxy_read_timeout`/`proxy_send_timeout` de 1900 s, acima dos 30 min da D-101. A verificação lê o `nginx -T`; o envio aos poucos de uma exportação grande não é medido.
+- **Log de acesso:** formato próprio, `$remote_addr [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent $request_time`, sem query string, Referer nem User-Agent, porque `/api/leads?cpf=…` e a busca podem levar CPF. O log de erro do Nginx incluiria a linha do pedido, com a query, numa falha de upstream; em `/api/` ele fica só no nível `crit` (D-111).
+- **Imagem e verificação:** o `nginx-unprivileged` continua sem root. `server_tokens off`. O `prod-check.sh` confere tudo isso por fora. A CSP, o HSTS, a `Permissions-Policy` e os demais cabeçalhos são conferidos, cada um uma única vez, em HTML, rota da SPA, asset, asset inexistente, API, actuator e health.
+
+## D-108 — IP real do cliente
+
+- **Na pilha:**
+  - O Nginx tem IP fixo na rede interna (`NGINX_INTERNAL_IP`, padrão 172.30.0.10) e **sobrescreve** o `X-Forwarded-For` com o `$remote_addr` que viu, descartando o que o cliente mandar.
+  - No perfil `prod`, o Tomcat usa `forward-headers-strategy: native` com `internal-proxies` igual a `\Q${TRUSTED_PROXY_IP}\E`: só o IP do Nginx, comparado literalmente. O padrão do Tomcat confia em toda a faixa 172.16/12, que inclui as redes do Docker.
+  - Assim, o `getRemoteAddr()` já usado no login, na exportação e na auditoria é o IP do cliente, e o limite de login (D-017) passa a contar por ele.
+- **Testes:**
+  - `ProductionForwardedIpTest`: o perfil `prod` com Tomcat real aceita o `X-Forwarded-For` só vindo do proxy confiável e o ignora vindo de outro endereço. Sem a propriedade `internal-proxies`, o teste falha.
+  - `prod-check.sh`:
+    - um login com `X-Forwarded-For` forjado grava na auditoria o IP que o Nginx viu, e não o forjado nem o do Nginx;
+    - cinco falhas trocando o IP forjado levam a 6ª tentativa a 429;
+    - sem a sobrescrita no Nginx, o IP forjado vai para a auditoria (mutação detectada).
+- **Como o Docker publica as portas e quando o IP de origem se perde:**
+  - Uma porta publicada vira uma regra DNAT do iptables (cadeias `DOCKER`/`DOCKER-USER`). O pacote de um cliente externo chega ao container com o **IP de origem preservado**.
+  - O `docker-proxy` (userland-proxy, ligado por padrão) atende ao que o DNAT não cobre: conexões feitas do próprio host (localhost e hairpin) e IPv6 quando o Docker não tem IPv6 na rede do container. Nesses casos, o Nginx vê o IP do gateway da rede do Docker (por exemplo, 172.30.0.1), e não o do cliente.
+  - Na verificação local, o cliente é o próprio host, por isso o IP visto é o do gateway (172.30.250.1). A verificação prova a cadeia (o IP que o Nginx vê é o gravado), não o IP público.
+- **Configuração para preservar o IP:**
+  - portas publicadas explicitamente em IPv4 (`HTTP_BIND`/`HTTPS_BIND`, padrão `0.0.0.0`), para o Docker não abrir o IPv6 pelo `docker-proxy`;
+  - na VPS, `"userland-proxy": false` no `/etc/docker/daemon.json`;
+  - sem registro AAAA para o domínio, a menos que o IPv6 do Docker seja configurado com `ip6tables`.
+- **ufw:** as portas publicadas pelo Docker não passam pelas regras do ufw, porque as regras do Docker entram antes, na tabela nat e na cadeia `DOCKER-USER`. Por isso **nenhuma porta além de 80 e 443 pode ser publicada**. PostgreSQL, backend e a porta 8081 não têm `ports`, e o `prod-check.sh` falha se algum serviço além do Nginx publicar porta.
+- **Verificação da 11b (runbook do PR 3):**
+  - o log do Nginx mostra IPs públicos, não 172.x;
+  - `ss -ltnp` não mostra `docker-proxy`;
+  - login a partir de um celular fora da rede do servidor, conferindo na auditoria que o IP gravado é o público do celular.
+
+## D-109 — Certificados
+
+- **Let's Encrypt, desafio HTTP-01 por webroot:**
+  - O volume `acme-webroot` é compartilhado entre o `certbot` (leitura e escrita) e o Nginx (só leitura); o volume `letsencrypt` guarda os certificados.
+  - `scripts/issue-cert.sh <.env.prod>` faz a primeira emissão, com `DOMAIN`, `LETSENCRYPT_EMAIL` e `LETSENCRYPT_STAGING` (`true` usa o ambiente de testes, recomendado primeiro), e reinicia o Nginx. `--print` mostra o comando sem executar.
+  - O serviço `certbot`, no perfil `letsencrypt` (`COMPOSE_PROFILES=letsencrypt` no `.env.prod`), roda `certbot renew` a cada 12 h.
+  - O Nginx recarrega a cada 6 h para pegar o certificado renovado.
+- **Primeira subida:** sem certificado para `DOMAIN`, o Nginx usa um provisório autoassinado, gerado no build da imagem e que nenhum navegador aceita. Com ele, o Nginx sobe e responde ao primeiro desafio.
+- **Local:** `scripts/local-cert.sh` gera uma CA descartável e um certificado para `localhost` no layout do Let's Encrypt. O `prod-check.sh` o coloca no volume `letsencrypt` e confere que o `curl` o aceita com a CA e o recusa sem ela. A pilha local não deve ser aberta num navegador de uso pessoal, porque o HSTS de `https://localhost` ficaria gravado nele.
+- **Imagens:** `certbot/certbot:v5.8.0` e `alpine:3.22.6` (estágio do certificado provisório), fixadas por digest.
+
+## D-110 — Backup e restauração
+
+- **Serviço `backup`:** a imagem própria parte da mesma imagem do PostgreSQL da pilha, para que `pg_dump` e `pg_restore` tenham a mesma versão do banco. Ela traz o `age` 1.2.1 do release oficial, conferido por sha256 (amd64 e arm64).
+  - O `crond` roda o `backup.sh` todos os dias às `BACKUP_TIME` (padrão 03:00), no fuso da operação (`TZ=APP_TIMEZONE`).
+  - O `backup.sh` faz `pg_dump -Fc` como `resort_backup` (só leitura, D-057), sem os dados de `spring_session*`, cifra com `age` para `BACKUP_AGE_RECIPIENT` e grava `resort-AAAAMMDDTHHMMSSZ.dump.age` no volume `backups`.
+  - Retenção: arquivos com 14 dias ou mais são apagados.
+  - O processo roda como root dentro do container, porque o `crond` do busybox exige; o container só alcança o banco e o volume de backups.
+- **Verificação de saúde (acréscimo antes do merge do PR 3):** o healthcheck do container roda o `backup-health.sh`.
+  - **Regra:**
+    - falha se o `crond` estiver parado;
+    - com algum backup no volume, o mais recente (`resort-*.dump.age`) precisa ter menos de `BACKUP_MAX_AGE_HOURS` (26 h: um dia mais folga), e um reinício do container não esconde um backup parado;
+    - sem nenhum backup (pilha recém-criada), vale uma carência de 26 h desde a subida do container, porque o primeiro backup só sai no próximo `BACKUP_TIME`.
+  - A mensagem de cada verificação diz o motivo e aparece no `docker inspect`.
+  - O intervalo padrão é 5 min (`BACKUP_HEALTH_INTERVAL`), com 2 tentativas.
+  - **O que fazer quando fica `unhealthy`:** runbook, seção 13.2.
+  - **Testes no `prod-check.sh`,** pelo status do próprio Docker, com intervalo de 5 s e esperando também a mensagem da checagem mais recente, porque o status sozinho pode vir de uma checagem anterior (achado ao escrever o teste):
+    - pilha nova sem backup: saudável pela carência;
+    - subida marcada 27 h atrás e nenhum backup: `unhealthy`;
+    - de volta à carência: saudável;
+    - com backup recente: saudável;
+    - último backup com 30 h: `unhealthy`, e continua assim depois de reiniciar o container;
+    - backup em dia de novo: saudável.
+
+    A mutação que voltou ao healthcheck antigo (`pgrep crond`) reprovou.
+- **Chave:** só a pública fica no servidor. A privada é gerada e guardada pelo operador (gerenciador de senhas e cópia offline) e só vai ao servidor, em `/dev/shm`, durante uma restauração. Quem invadir a VPS não lê os backups; perder a chave privada torna todos os backups inúteis.
+- **Restauração** (`scripts/restore.sh`, com o passo a passo no `docs/DEPLOY.md`):
+  - confere que a chave decifra o backup antes de mexer em qualquer coisa;
+  - para o Nginx, o backend e o backup;
+  - recria o banco com as permissões de banco do `postgres/initdb`;
+  - restaura como `resort_owner`;
+  - roda o `migrate` e sobe a pilha.
+
+  Serve para a mesma VPS e para uma VPS nova (os papéis vêm da criação do volume).
+- **Cópia fora da VPS: obrigatória na 11b** (confirmado). O destino exato fica para a 11b. O modelo recomendado é o operador puxar os arquivos por `rsync` com uma chave SSH restrita ao `rrsync -ro`, sem credencial de destino no servidor. A cópia só na VPS não protege contra perda do servidor, do disco ou da conta, nem contra ransomware.
+- **Testes no `prod-check.sh`:**
+  - o horário do crontab e o fuso;
+  - o arquivo começa com o cabeçalho do age;
+  - sem a chave, o `pg_restore` não lê o arquivo;
+  - com a chave, o dump traz o CPF de um Lead de teste.
+
+    O formato custom do `pg_dump` já comprime os dados, então procurar o CPF no arquivo sozinho não provaria a criptografia (achado na mutação "sem criptografia").
+  - retenção: um arquivo de 15 dias é apagado e um de 13 é mantido;
+  - a restauração com a chave errada para com mensagem clara e sem mexer no banco;
+  - **perda total**: `down -v` apaga tudo; a restauração parte da cópia do arquivo fora da pilha. Depois dela, as contagens por tabela e um hash do conteúdo de `audit_logs` batem com os de antes, o ADMIN entra, `resort_app` continua sem ownership e sem poder apagar `audit_logs`, e os triggers voltam.
+
+## D-111 — Logs sem dado pessoal na produção
+
+- **Retenção:** `json-file` com 10 MB × 5 por serviço (D-105), no máximo cerca de 50 MB por serviço.
+- **Nginx:**
+  - log de acesso sem query, Referer e User-Agent (D-107);
+  - em `/api/`, `error_log` só no nível `crit`. O log de erro do Nginx grava a linha do pedido, com a query, quando o backend falha (`upstream timed out … request: "GET /api/leads?cpf=…"`); a falha continua visível pelo status 502/504 no log de acesso e pelos logs do backend.
+  - Conectar ao backend tem limite de 5 s: fora do ar, a API responde 504 em 5 s, e não em 60 s.
+- **Backend:** as regras das fases anteriores (regra 5 do CLAUDE.md, D-069).
+- **Verificação no `prod-check.sh`:**
+  - o E2E grava os CPFs e códigos de convite que usou (`E2E_SENSITIVE_FILE`);
+  - o script faz de propósito um `GET /api/leads?cpf=…&q=…` e, com o backend parado, outro que recebe 504;
+  - em seguida, procura cada CPF (com e sem pontuação), cada código (com e sem hífen) e as senhas do ADMIN e do superusuário nos logs de todos os containers;
+  - a linha de acesso de `/api/leads` aparece sem a query.
+
+  Mutações detectadas: sem o `error_log crit` (o CPF apareceu no log de erro) e o log de acesso com `$request` (o CPF apareceu na query).
+
+## D-112 — Publicação das imagens
+
+- **Workflow `release.yml`:** roda só no push de uma tag `vX.Y.Z`.
+  - Primeiro executa os mesmos checks do `ci.yml`, chamado como workflow reutilizável: `verify`, `e2e` e `prod-stack`, para aquele commit.
+  - O job `publish` só roda se os três passarem, e só se o commit da tag estiver na `main`.
+  - O `scripts/publish-images.sh` gera `backend`, `nginx` e `backup` e publica cada uma em `ghcr.io/<dono>/<repositório>/<imagem>` com duas tags, `vX.Y.Z` e `sha-<commit>`, e com os rótulos OCI de origem, versão e revisão.
+  - O `ci.yml` deixa de rodar no push de tags (`branches: ['**']`), para os checks da tag não rodarem duas vezes.
+- **Terceira imagem:** o backup precisa do `age` junto do `pg_dump`, e não há imagem pronta com os dois. Por isso são três imagens, e não duas.
+- **Servidor:** faz `docker login ghcr.io` com um token só de leitura (`read:packages`) e usa as tags de versão no `.env.prod` (`docs/DEPLOY.md`, seção 4). O repositório fica privado antes da 11b, e as imagens seguem a visibilidade dele.
+- **Consumo** (medido na pilha local e estimado para o CI):
+
+  | Item | Estimativa |
+  |---|---|
+  | Imagens comprimidas | backend 127 MB, nginx 22 MB, backup 120 MB; cerca de 270 MB no conjunto |
+  | Uma release | os três checks (cerca de 4 + 2 + 6 min, em paralelo) mais o `publish` (cerca de 6 a 8 min, sem cache): em torno de 20 minutos de runner |
+
+  Nas versões seguintes, as camadas de base e de dependências se repetem, e cada versão tende a acrescentar dezenas de MB, não o conjunto inteiro. Uma troca de imagem base ou de dependências acrescenta de novo perto do tamanho cheio.
+
+  Enquanto o repositório é público, os minutos de Actions e o GHCR não são cobrados. Com ele privado, os minutos e o armazenamento de pacotes contam na cota do plano da conta; confira os valores atuais na página de cobrança do GitHub antes da 11b. Para não crescer sem limite, apague as versões antigas das imagens, mantendo pelo menos as duas últimas para a volta de versão.
+
+  O maior consumo de minutos não é a release: cada push num branch com PR roda o CI duas vezes (`push` e `pull_request`), cerca de 24 minutos por push. Se a cota apertar com o repositório privado, restringir o `push` à `main` corta isso pela metade.
+- **Não testado aqui:** os workflows só rodam no GitHub. A primeira tag de versão é o teste real, e dá para usar uma tag descartável.
+
+
+## D-113 — Nome do produto: Resortric
+
+- **Contexto:** o repositório no GitHub foi renomeado de `leasort` para `resortric`, o nome definitivo do produto.
+- **Decisão:**
+  - A única referência a "leasort" no repositório era o container descartável do E2E, que passa a se chamar `resortric-e2e-db` (`scripts/e2e.sh`).
+  - O workflow de release e o `scripts/publish-images.sh` montam o prefixo das imagens a partir de `github.repository`. Por isso, a próxima tag publica em `ghcr.io/<dono>/resortric/{backend,nginx,backup}` sem mudança no código. `.env.prod.example` e `docs/DEPLOY.md` já usam `<dono>/<repositório>`.
+  - Não mudam: o pacote Java `com.resort.platform`, o banco `resort`, os papéis `resort_owner`, `resort_app` e `resort_backup`, os volumes e o projeto do compose de produção (`name: resort`). Nenhum contém "leasort", e mudar qualquer um exigiria migrar uma instalação existente.
+- **Projeto do compose:**
+  - **Produção:** o `docker-compose.prod.yml` fixa `name: resort`. Por isso, containers, rede e volumes (`resort_postgres-data`, `resort_backups` etc.) não dependem do nome da pasta.
+  - **Desenvolvimento:** o `docker-compose.yml` passa a fixar `name: resort-dev`, e o volume vira `resort-dev_postgres-data`.
+    - Motivo: sem o nome fixo, o projeto vinha da pasta (`leasort` → `leasort_postgres-data`). Ao renomear a pasta, o compose criaria um volume vazio e deixaria o antigo órfão. O volume de dev deixa de depender do nome da pasta.
+    - O nome é diferente do `resort` da produção para os dois não se confundirem na mesma máquina.
+    - A passagem para quem já tinha o ambiente está no `CLAUDE.md`, em Problemas comuns.
+- **Imagens publicadas como `leasort`:** as imagens da `v0.1.0` continuam em `ghcr.io/<dono>/leasort/*`. O GHCR não renomeia pacotes nem redireciona o nome antigo. Nenhuma instalação usa essas imagens, porque a 11b ainda não começou. A próxima versão sai com o nome novo; depois disso, os pacotes `leasort/*` podem ser apagados.
+- **Descartado:**
+  - Renomear o pacote Java, o banco ou os papéis: o ganho seria só estético, e o custo seria uma migração de dados.
+  - Copiar o volume de dev antigo para o novo: os dados de dev são fictícios, e o backend recria as tabelas e o ADMIN inicial na subida.
+- **Impacto:**
+  - Nenhum na aplicação nem no banco de produção.
+  - No dev, a troca de volume acontece uma única vez: o banco nasce vazio na primeira subida depois da atualização. Dali em diante, renomear a pasta não muda mais o volume.
+
+## D-114 — Fase 12: acabamento visual e tema por cliente
+
+- **Contexto:** a primeira apresentação ao gerente comercial do Resort precisa de acabamento visual e da marca do cliente na tela. A 11b (deploy real) depende do que sair dessa reunião.
+- **Decisão:** escopo novo, definido pelo Samuel, registrado como Fase 12 na §25 da SPEC.
+  - **Ordem:** a 12 roda antes da 11b. A 11a está concluída (v0.1.1); a 11b fica suspensa até o fim da 12.
+  - **Escopo:** tema por cliente injetado na subida (cor principal e logotipo), identidade padrão do Resortric, onde cada marca aparece, contraste, o que não segue o tema, tela de login redesenhada e consistência entre telas.
+  - **Entrega:** três PRs (mecanismo e identidade; marca nas telas; consistência e reconferência) e a tag `v0.2.0` ao fim da fase.
+- **Fora da fase:** tela de configuração ou upload do tema pelo sistema, modo escuro, tema por usuário ou por unidade (múltiplas unidades estão na §28). É um tema por instalação.
+- **Impacto:** nenhuma mudança no backend nem no banco.
+
+## D-115 — Tema por cliente injetado na subida
+
+- **Contexto:** a mesma imagem precisa servir a qualquer cliente (D-087). O nome já vem de `RESORT_NAME`; faltam a cor principal e o logotipo.
+- **Decisão (amplia a D-087 e a D-107, confirmado):**
+  - **Cor:** `BRAND_COLOR` no `.env.prod`, só no formato `#RRGGBB`. Vazia vale a cor padrão do Resortric (D-116).
+  - **Logotipo:** só PNG, em `logo.png` no diretório `BRAND_DIR` do servidor (padrão `./brand`, ao lado do compose), montado só leitura em `/etc/resort/brand` no Nginx. Sem o arquivo, não há logotipo.
+  - **Subida:** o `nginx/41-resort-brand.sh` roda depois do `40-resort-name.sh` (que não muda), valida, copia o PNG validado para `/usr/share/nginx/html/brand/logo.png` (a cópia anterior é apagada antes) e preenche no `index.html` as metas `resort-brand-color` e `resort-brand-logo` (`/brand/logo.png`). Trocar a cor ou o arquivo e reiniciar o container basta, sem rebuild.
+  - **Validação, que recusa a subida com mensagem clara:** cor fora de `#RRGGBB`; `logo.svg`, `logo.jpg`, `logo.jpeg` ou `logo.webp` no diretório; `logo.png` sem a assinatura PNG ou sem o bloco `IHDR` no início; largura ou altura fora de 1 a 2048 px; arquivo acima de 256 KB (262.144 bytes). Recusar, em vez de cair no padrão, evita apresentar a marca errada sem ninguém perceber.
+  - **Frontend:** o `lib/brand.ts` (substitui o `lib/resort.ts`) lê as metas e valida de novo: cor fora do formato ou logotipo diferente de `/brand/logo.png` valem o padrão. As cores entram no `:root` por CSSOM (`style.setProperty`), no `main.tsx`, antes do primeiro render: sem `<style>` inline e sem piscar a cor padrão.
+  - **Repositório:** `/brand/` no `.gitignore`, para um logotipo real nunca ser commitado. Os testes usam o tema fictício "Resort Fictício das Águas".
+  - **Complemento (Fase 12, PR 2, pedido na revisão):** `logo.png` que existe mas não pode ser lido pelo uid 101 do Nginx (por exemplo, do root com modo 600) também recusa a subida, com "logo.png sem permissão de leitura: use chmod 644", em vez do erro genérico do shell. Testado no `prod-check.sh`; o runbook pede `chmod 644`.
+- **Descartado:**
+  - **Logotipo em SVG** (retirado na aprovação): o convite é desenhado em canvas no celular do Prospector, muitas vezes um iPhone, e o SVG no canvas só seria validado no Chromium; além disso, validar SVG por lista de proibições (`<script>`, `<foreignObject>`, `on…=`) é frágil. A CSP `sandbox` da rota `/brand/` (D-119) fica como proteção extra.
+  - Endpoint e tabela no backend com upload: exigiria migration, tela e uma superfície de upload.
+  - Variáveis `VITE_*` no build: a imagem ficaria presa a um cliente.
+  - `theme.css` gerado pelo shell: a regra de contraste (D-118) ficaria duplicada em awk, sem os testes do Vitest.
+  - Logotipo em `data:` na meta: a CSP não aceita `data:` em `img-src`.
+  - Logotipo por URL externa: a CSP bloqueia, e o sistema dependeria de outro site.
+  - Servir o arquivo direto do diretório montado: um logotipo trocado sem reiniciar escaparia da validação.
+  - Cor em `rgb()`, `oklch()` ou por nome: validação mais complexa sem ganho; quem fornece a marca entrega o hexadecimal.
+  - Cair no tema padrão com valor inválido: esconderia o erro até a apresentação.
+
+## D-116 — Identidade padrão do Resortric
+
+- **Decisão:**
+  - O nome do produto fica numa constante única, `PRODUCT_NAME` em `frontend/src/lib/brand.ts`.
+  - Logotipo tipográfico em SVG (`frontend/public/resortric.svg`): "Resortric" com as letras desenhadas como traços, sem depender de fonte instalada e sem símbolo.
+  - Favicon fixo (`frontend/public/favicon.svg`): o "R" no mesmo traço, em branco sobre a cor padrão. Substitui o favicon padrão do Vite, que o projeto trazia desde a Fase 1.
+  - Cor padrão: `#1f4e79` (8,66:1 com texto branco).
+- **Descartado:** favicon a partir do logotipo do cliente (logotipo largo fica ilegível a 16 px) ou um terceiro arquivo de configuração só para ele (confirmado).
+- **Atualizada pela D-126:** logotipo com símbolo, favicon só com o símbolo e paleta "Lago e ouro". O nome do produto e a cor principal padrão não mudam.
+
+## D-117 — Hierarquia da identidade do cliente
+
+- **Decisão (ajuste da aprovação):** em todo lugar que mostra a identidade (cabeçalho, login, título da aba, imagem do convite e ficha), a regra é única:
+  1. o logotipo, se houver;
+  2. senão, `RESORT_NAME` em texto;
+  3. senão, Resortric.
+
+  Um cliente só com `RESORT_NAME` nunca aparece como "Resortric". O título da aba é texto, então usa o nome: "Tela · `RESORT_NAME`", ou "Tela · Resortric" sem ele. O `alt` do logotipo é o `RESORT_NAME` ou, sem ele, "Logotipo do Resort".
+
+  | Lugar | Identidade | Resortric aparece |
+  |---|---|---|
+  | Cabeçalho | Hierarquia | Só no nível 3 |
+  | Login | Hierarquia, em destaque | No rodapé, sempre |
+  | Rodapé do sistema | — | Sempre, discreto |
+  | Título da aba | Nome da tela · `RESORT_NAME` ou Resortric | Só sem `RESORT_NAME` |
+  | Favicon | "R" do Resortric (D-116) | Sempre |
+  | Imagem do convite | Hierarquia, mais uma faixa na cor principal | Só no nível 3 |
+  | Ficha impressa | Hierarquia, com o logotipo de no máximo 12 mm de altura | Só no nível 3 |
+
+  A imagem do convite deixa de usar "Resort" como padrão: sem logotipo e sem nome, mostra "Resortric".
+- **Onde entra:** cabeçalho, título da aba e rodapé neste PR (Fase 12, PR 1); login, convite e ficha no PR 2.
+- **Complemento (Fase 12, PR 2):**
+  - **Imagem do convite:** faixa de 24 px na cor principal no topo, sem texto sobre ela; o logotipo é contido numa caixa de 720 × 160 px, centralizado e sem distorcer (um logotipo muito largo fica baixo, um muito alto fica estreito); sem logotipo, ou se ele não carregar, o nome em texto. O QR ocupa uma área de 680 px e é redesenhado módulo a módulo: os módulos são lidos do PNG da API em tamanho natural (1:1, sem reamostragem; o ZXing do backend usa módulos de 20 px inteiros e 46 px de margem) e desenhados como retângulos de 27 px em coordenadas inteiras, com 2 módulos de margem. O resultado é igual em qualquer navegador; ampliar o PNG com suavização deixava bordas interpoladas que dependiam do filtro de cada um (achado no CI do PR 2). O E6 confere a leitura com o logotipo comum, o muito largo e o muito alto, e que a área do QR não tem nenhum tom intermediário. A leitura no teste tenta a imagem na orientação normal e, se preciso, girada, porque o detector do `@zxing/library` 0.23 não acha os padrões de localização de parte dos QRs corretos, inclusive dos PNGs do próprio backend (2,4% medidos no PR 3; o ZXing Java também falha em 0,4%, ao contrário do que o PR 2 registrou a partir de 3 exemplos); os números e a alternância de orientação no scanner estão na D-123.
+  - **Ficha:** a identidade fica à direita do título; o logotipo tem no máximo 12 mm de altura e 45 mm de largura na impressão. O E8 gera o PDF da impressão do Chromium no pior caso da D-097 (6 acompanhantes e 2.000 caracteres) e confere uma página A4 sem logotipo e com os três logotipos fictícios; a verificação manual da D-097 passa a ser automática.
+- **Cabeçalho:** continua branco, porque logotipos costumam ser feitos para fundo claro. A cor principal entra numa faixa de 4 px no topo, nos botões principais e no indicador do item ativo do menu. O item ativo tem também fundo e fonte em negrito (ajuste da aprovação), e a linha do indicador segue a regra de borda da D-118: com uma cor clara, ela fica escura, e o item continua reconhecível.
+
+## D-118 — Contraste da cor principal
+
+- **Decisão:**
+  - **Texto sobre a cor principal:** branco, se atingir 4,5:1; senão, **preto puro**. Com o preto puro, uma das duas opções sempre passa (o pior caso é 4,58:1, com luminância relativa em torno de 0,18); um "quase preto" como o `--foreground` cairia para 4,32:1.
+  - **Hover:** com texto branco, a cor escurece 12% (mistura com preto); com texto preto, clareia 12% (mistura com branco). O contraste do hover nunca é menor que o da base. O `hover:bg-primary/90` do shadcn clareava a cor, o que derrubaria o texto branco.
+  - **Borda (`--primary-edge`):** a própria cor se tiver pelo menos 3:1 contra o branco; senão, a cor escurecida até atingir 3:1. É a borda dos botões principais e a linha do item ativo do menu, para uma cor clara (por exemplo, `#f5d90a`, 1,42:1) não sumir no fundo branco.
+  - A cor principal nunca vira texto sobre branco, e o anel de foco (`--ring`) continua neutro.
+  - As contas seguem a WCAG 2.x (luminância relativa do sRGB). Variáveis: `--primary`, `--primary-foreground`, `--primary-hover`, `--primary-edge`; o `main.tsx` sempre as escreve no `:root` (com o tema do cliente ou com a cor padrão), e as do `index.css` são só o valor inicial.
+- **Descartado:** recusar cores claras na subida (a regra resolve o caso); escurecer a cor do cliente para usar texto branco (deixaria de ser a marca).
+- **Testes:** valores de referência (`#767676` dá branco, 4,54:1; `#777777` dá preto, 4,69:1) e uma varredura de 4.096 cores em que texto, hover e borda sempre atingem os mínimos.
+
+## D-119 — Logotipo só por `<img>` e rota `/brand/`
+
+- **Decisão:**
+  - O logotipo aparece só por `<img src="/brand/logo.png">`, nunca inline. No canvas do convite (PR 2), entra por `drawImage` de um `<img>` do próprio site.
+  - A CSP geral não muda: `img-src 'self'` já cobre o arquivo.
+  - A location `/brand/` do Nginx inclui os cabeçalhos de segurança de sempre e acrescenta uma CSP própria, `default-src 'none'; sandbox`, além de `Cache-Control: no-cache` (o arquivo pode mudar a cada subida) e 404 para o que não existe. Com o logotipo só em PNG, a `sandbox` é proteção extra: um arquivo aberto direto no navegador não roda nada na origem do sistema.
+- **Testes:** `prod-check.sh` confere tipo, `nosniff`, as duas CSPs e o `no-cache`; o E2E reprova qualquer violação de CSP com o logotipo na tela.
+
+## D-120 — O que não segue o tema do cliente
+
+- **Decisão:**
+  - **Resultado da Portaria:** cores fixas, fora do tema, sempre com ícone e texto: "ACESSO LIBERADO" em `#15803d` (texto branco, 5,02:1) com o ícone de confirmação, e "ACESSO NEGADO" em `#b91c1c` (6,47:1) com o ícone de negação. Antes, o liberado usava o `green-600` do Tailwind, com 3,22:1.
+  - **Botões das telas de resultado** ([CONFIRMAR ENTRADA] e [NOVA VALIDAÇÃO]): variante `neutral` (quase preto, texto branco), sem a cor do cliente. Uma cor principal verde ou vermelha não se confunde com o resultado; o E9 usa justamente o verde do liberado como cor do cliente. A tela inicial da Portaria continua com a cor do cliente.
+  - **Lista de Acessos:** "Liberado" e "Negado" com as mesmas cores fixas (variantes `ok` e `denied` do Badge). Antes, "Liberado" era o badge cinza.
+  - **Gráficos:** a paleta da D-100, sem mudança.
+  - **Erro e aviso:** `--destructive` e o âmbar dos avisos continuam fixos; a padronização em componentes fica para o PR 3 (D-122).
+- **Descartado:** medir a distância entre a cor do cliente e as de status, ou recusar cores parecidas: como as telas de resultado não usam a cor do cliente, não há o que medir.
+
+## D-121 — Tela de login
+
+- **Decisão:** o login e a troca de senha usam a mesma moldura (`AuthShell`): faixa de 4 px na cor principal no topo; a identidade do cliente em destaque, pela hierarquia da D-117 (logotipo com até 80 px de altura, o nome em texto grande ou o logotipo do Resortric), com "Gestão de visitas" abaixo; o cartão do formulário, com o título "Entrar" e uma linha de orientação; e o Resortric no rodapé, com qualquer tema. O fluxo, os campos e as mensagens de erro não mudam.
+- **Descartado:** tela dividida com painel colorido ao lado do formulário (o logotipo costuma ser feito para fundo claro, e a 390 px o painel empurraria o formulário para baixo); imagem de fundo (mais um arquivo de tema, fora do pedido).
+
+
+## D-122 — Padrões de tela
+
+- **Contexto:** o levantamento da Fase 12 achou telas sem estado de carregamento, listas vazias com mensagens dentro e fora da tabela, erros soltos sem "Tentar de novo", avisos copiados, cinco larguras sem critério, o menu do celular quebrando em várias linhas antes do conteúdo e espaço dobrado no topo dos cartões (achados A1 a A12).
+- **Decisão:**
+  - **Estados comuns** (`components/PageState.tsx`): `PageLoading` (ícone e "Carregando...", `role="status"`), `EmptyState` (caixa tracejada, fora da tabela: a lista vazia não mostra tabela), `LoadError` (`role="alert"`, a mensagem em português e "Tentar de novo", que refaz a consulta) e `Notice` (aviso âmbar ou sucesso verde, cores fixas fora do tema, como na D-120). Aplicados em todas as telas com consulta; os textos das mensagens não mudam, e Usuários e Prospectores ganham a mensagem de lista vazia.
+  - **Larguras:** três. Formulário e Portaria, `max-w-md` (Perfil e Portaria); detalhe, `max-w-3xl` (Lead, visita, convite e importação); lista, largura total. A ficha continua com `max-w-2xl`, por ser a página A4 (D-097).
+  - **Títulos:** `text-2xl` em todas as telas, inclusive no cartão do login e da troca de senha.
+  - **Menu no celular:** abaixo de 768 px, o cabeçalho tem uma linha só, com a identidade à esquerda e um botão "Menu" (dropdown do Radix, já no projeto) à direita. O menu traz o nome e o perfil do usuário, os itens do perfil, com o item atual marcado como no desktop (borda na cor de `--primary-edge`, fundo e negrito, e `aria-current`), e depois "Trocar senha" e "Sair". Os itens têm pelo menos 40 px de altura. A partir de 768 px, nada muda. O E9 confere que o cabeçalho da Portaria a 390 px tem no máximo 72 px de altura.
+  - **Cartões:** o `CardContent` não soma `pt-6` ao `py-6` do `Card` (Portaria e convite).
+  - **Tabelas no celular:** abaixo de 640 px, as tabelas das telas usadas no celular (Acessos, Leads, Agenda, Histórico, Visitas e Convites) viram cartões: cada linha é um bloco, e cada célula mostra antes do valor o rótulo da coluna (`data-label`). O cabeçalho sai da tela, mas continua para o leitor de tela. As telas só do ADMIN (Usuários, Prospectores e Auditoria) mantêm a rolagem horizontal.
+  - **Ações perigosas:** "Cancelar visita" (visita e convite) e "Descartar" (Lead) têm texto vermelho no botão, e a confirmação delas, e a de desativar um usuário, usa a variante `destructive` do botão, fora do tema do cliente. As demais confirmações seguem a cor principal.
+- **Descartado:** menu lateral (drawer) no celular, que exigiria mais um componente e o foco preso fora do Radix; esconder colunas das tabelas no celular, que tiraria informação sem aviso; usar a cor principal nas ações perigosas.
+- **Testes:** `AppLayout.test.tsx` (itens do menu do celular por perfil, item atual, navegação e "Sair"; classes responsivas); `screenPatterns.test.tsx` (estados comuns, lista vazia sem tabela, "Tentar de novo" refazendo a consulta, `data-label` igual ao cabeçalho, cor das ações perigosas); E9 (altura do cabeçalho e botão "Menu" a 390 px) e o passo da Portaria no `screens-csp.spec.ts`, que agora navega pelo menu.
+
+## D-123 — Scanner da Portaria alterna a orientação a cada quadro
+
+- **Contexto:** no PR 2, a imagem do convite passou a ser lida no E6, e alguns QRs corretos não eram lidos pelo `@zxing/library` 0.23, o mesmo leitor do scanner da Portaria (`BrowserQRCodeReader`). No PR 3 a falha foi medida com 3.000 códigos aleatórios do alfabeto do convite, com os PNGs gerados por `QrCodes.png`, o mesmo código do backend (512 px, correção M, margem 2):
+  - o zxing-js não lê **72 (2,4%)**, com ou sem `TRY_HARDER`: o detector não acha os padrões de localização;
+  - girar a imagem em 90°, 180° ou 270° resolve **71 dos 72**;
+  - o ZXing Java 3.5.4, do backend, não lê **12 (0,4%)**, todos entre os 72. O PR 2 tinha registrado que o Java lia todos, a partir de 3 exemplos; a D-117 foi corrigida.
+
+  O E4 do CI (leitura pela câmera falsa do Chromium) já tinha falhado de forma intermitente pelo mesmo motivo. No PR 3 a decisão foi só registrar a pendência e esperar um teste com câmera real. Depois, o Samuel conferiu fora do sistema os 24 PNGs de `docs/qr-teste-camera/` com margem de 2 a 10 módulos e em 9 escalas (30% a 130%): os 20 problemáticos quase nunca leem (0 a 3 das 9), e os 4 de controle leem sempre. A falha depende do conteúdo, e é improvável que a câmera real a resolva; por isso a decisão veio antes do teste com câmera.
+- **Decisão (Fase 12, PR 4):** o scanner usa a `PortariaQrReader`, subclasse do `BrowserQRCodeReader`, que alterna a orientação a cada quadro: um quadro na orientação normal, o seguinte girado 90° no sentido anti-horário. Continua **uma decodificação por quadro, a cada 500 ms** (o padrão da biblioteca, agora explícito): o número de decodificações por segundo não aumenta.
+  - **Como:** a subclasse sobrescreve `decodeFromCanvas`, que o loop do `@zxing/browser` chama a cada quadro. Os tons de cinza vêm do `HTMLCanvasElementLuminanceSource` da própria biblioteca; a rotação é um laço sobre o buffer, com largura e altura trocadas. A rotação da biblioteca (`rotateCounterClockwise` do `HTMLCanvasElementLuminanceSource`, na 0.2.1) não cria o canvas temporário nem troca as dimensões, e não é usada. A câmera, a parada e os erros continuam com o loop da biblioteca.
+  - **Sentido anti-horário:** nos 3.000 PNGs, normal + anti-horário deixa **4** sem leitura (0,13%); normal + horário, 8. Nos 20 problemáticos, o anti-horário lê os 20; o horário, 19 (falha no `a01`).
+  - **No navegador** (Chromium, quadro de 640 × 480 com o QR centralizado em 5 escalas, de 50% a 90% da altura): os 20 problemáticos passam de 12 para 91 leituras em 100 combinações de arquivo e escala; os controles leem nas 20. A alternância não resolve todas as escalas (o `a01`, a 80% da altura, não é lido em nenhuma orientação), mas o QR se move na mão do visitante, e a escala muda de um quadro para outro.
+  - **Tempo até a primeira leitura:** dos 3.000, 2.918 leem nas duas orientações (sem mudança); 10 só leem na normal (até 500 ms a mais, se o primeiro quadro nítido for um girado); 68 só leem girados (antes não liam; agora, no primeiro quadro girado). Custo medido por quadro no Chromium, a 640 × 480: mediana de 4,3 ms na orientação normal e 5,1 ms girado, perto dos 500 ms entre quadros.
+  - **Dependência do loop interno:** a subclasse só funciona se o loop (`scan`) chamar `decodeFromCanvas` a cada quadro. Por isso o `@zxing/browser` (0.2.1) e o `@zxing/library` (0.23.0) ficam em versão exata no `package.json`, com um comentário apontando para esta decisão; o `@zxing/library` passa para `dependencies`, porque a subclasse o importa. O **E4b** é a proteção: como o E4, passa pelo loop real da biblioteca com a câmera (simulada), mas com um QR que só é lido girado; se uma atualização deixar de chamar `decodeFromCanvas`, o E4 continua passando e só o E4b reprova. Conferido com uma mutação: com o scanner de volta ao `BrowserQRCodeReader`, o E4b reprova no `a01`.
+- **Confirmação:** o teste com câmera real no servidor de demonstração (`docs/qr-teste-camera/`) passa a ser confirmação da alternância, não mais a base da decisão. O código digitado continua sendo a alternativa da Portaria (§16.5).
+- **Alternativa futura:** o `BarcodeDetector` do navegador. Existe no Chrome do Android, mas não no Safari do iOS nem no Firefox; exigiria manter os dois leitores, com comportamentos diferentes. Fica registrado para o caso de a confirmação com câmera real mostrar falhas que a alternância não resolve.
+- **Descartado:** uma leitura própria dos quadros (`getUserMedia`, loop e parada escritos no projeto), que duplicaria a gestão da câmera numa tela crítica; duas decodificações por quadro, que dobrariam o custo; a rotação do `BinaryBitmap` da biblioteca, pelo defeito acima.
+- **Testes:**
+  - Vitest (`portariaQrReader.test.ts`): os 24 PNGs lidos pelo método de quadro da `PortariaQrReader`, sem câmera (o jsdom não tem canvas; os PNGs são lidos em tons de cinza por um leitor mínimo de teste). Os 4 de controle leem no primeiro quadro, na orientação normal; nenhum dos 20 problemáticos lê na normal, e os 20 leem no segundo quadro, girado. O teste também confere a alternância quadro a quadro e o sentido da rotação.
+  - E4: o QR real do convite, pela câmera, continua liberando o acesso.
+  - E4b: pela câmera, o `a01` e o `c01` a 70% da altura, com "Código inválido" como prova de leitura.
+- **Impacto:** o E2E continua lendo a imagem do convite em qualquer orientação (`readAnyOrientation`), porque o que ele confere é o desenho do QR, não o leitor da Portaria.
+
+## D-124 — Pendência da 11b: verificação de exportação em fluxo depende do buffer de TCP do host
+
+- **Contexto:** o `prod-check.sh`, na seção "Exportação chega aos poucos pelo Nginx (D-101, D-107)", grava 100 mil Leads fictícios (uma exportação de cerca de 20 MB), baixa `/api/exports/leads` com um cliente lento (`curl --limit-rate 1M`) e, aos 6 s, confere quatro coisas: que o download ainda corre, que o backend ainda tem a transação da exportação aberta no banco, que o primeiro byte chegou em menos de 3 s e que o total passou de 12 s. A segunda verificação é a que prova que o Nginx não guarda a resposta (`proxy_buffering off`) e que o backend acompanha o ritmo do cliente.
+- **Fragilidade:** entre o backend e o `curl` há buffers de TCP que o Nginx não controla. O `curl` e a porta publicada pelo Docker (`docker-proxy`) rodam no namespace de rede do host e seguem o `net.ipv4.tcp_rmem` dele. Se eles couberem a exportação inteira, o backend escreve tudo, fecha a transação e devolve a conexão antes dos 6 s, embora o `curl` ainda esteja recebendo aos poucos. O produto continua certo (os bytes ficam no kernel, não na memória da JVM), mas a verificação reprova. Na verificação local do PR 4 da Fase 12, num host com `net.ipv4.tcp_rmem` de até 32 MB (33554432), ela falhou uma vez ("transação aberta: 0") e passou na rodada seguinte; as outras três verificações da seção passaram nas duas. O resultado varia porque o autoajuste do TCP nem sempre leva o buffer ao máximo. O padrão do Linux é bem menor (6 MB), e o `prod-stack` do CI (runner `ubuntu-latest`) não falhou por isso nas execuções da Fase 12.
+- **Opções para a 11b** (nenhuma aplicada agora; o teste não muda):
+  1. **Cliente lento num container com buffer fixo:** rodar o `curl` num container na rede da pilha com `--sysctl net.ipv4.tcp_rmem="4096 131072 1048576"` (sysctl do namespace de rede, aceito pelo Docker), falando direto com o Nginx. O buffer de recepção deixa de depender do host. Custo: mais uma imagem com `curl` no prod-check.
+  2. **Exportação maior que qualquer buffer:** subir o volume para passar com folga do maior buffer plausível (por exemplo, 500 mil Leads, cerca de 100 MB). Custo: o prod-check fica mais lento (a 1 MB/s, mais de 100 s só nessa etapa) e usa mais disco.
+  3. **Verificação relativa:** amostrar o `pg_stat_activity` durante todo o download e exigir que a transação dure uma fração mínima do tempo total, em vez de estar aberta num instante fixo. Reduz a dependência, mas não a elimina.
+  4. **Só documentar:** manter o teste e registrar no `docs/DEPLOY.md` que o `prod-check` pressupõe `tcp_rmem` padrão. Custo zero, mas a falha continua possível em hosts com buffer grande, inclusive a VPS.
+
+  A opção 1 é a recomendada: é a única que torna a verificação independente do host sem aumentar o tempo do prod-check.
+- **Onde entra:** na 11b, antes de rodar o `prod-check` na VPS de produção, cujo `tcp_rmem` ainda não é conhecido.
+
+## D-125 — Instalação de demonstração: exceção controlada à regra 10
+
+- **Contexto:** a apresentação ao gerente comercial (D-114) precisa de um sistema com histórico plausível, e não de telas vazias. A regra 10 do `CLAUDE.md` proibia dados fictícios fora do perfil `dev`.
+- **Decisão (Samuel):** dados fictícios são permitidos numa instalação de demonstração, com três travas:
+  1. **Variável explícita:** a carga só roda com `DEMO_INSTANCE=true`, exatamente. `TRUE`, `1` ou a variável ausente recusam antes de qualquer conexão com o banco.
+  2. **Banco vazio:** a carga se recusa se o banco tiver qualquer dado além do ADMIN inicial, ou seja, se houver mais de um usuário ou qualquer linha nas tabelas de negócio (Prospectores, Leads, visitas, acompanhantes, convites e acessos). A auditoria e as sessões são ignoradas, porque o ADMIN inicial pode já ter entrado. A conferência roda na mesma transação da carga, com as tabelas travadas; uma segunda carga é recusada.
+  3. **Etiqueta:** com `DEMO_INSTANCE=true`, o rodapé de todas as telas, inclusive o login e a troca de senha, mostra "Ambiente de demonstração", pequeno, ao lado do Resortric. A imagem do convite e a ficha impressa não mostram a etiqueta.
+- **Etiqueta (Fase 12, PR A da demonstração):**
+  - O Nginx ganha o `42-resort-demo.sh`, no padrão da D-115: com `DEMO_INSTANCE=true`, preenche a meta `resort-demo` com "true"; vazia ou `false`, deixa a meta vazia; qualquer outro valor recusa a subida com o motivo no log, para um "True" digitado por engano não esconder a etiqueta de uma instalação com dados fictícios.
+  - O frontend liga a etiqueta só com a meta igual a "true" (`isDemoInstance` em `lib/brand.ts`). O rodapé comum (`ProductFooter`) é usado pelo `AppLayout` e pelo `AuthShell`. Na impressão, o rodapé do sistema some (`print:hidden`), então a ficha não traz a etiqueta; a imagem do convite é desenhada num canvas, sem rodapé.
+  - Testes: `brand.test.ts` (B13: só "true" liga), `AppLayout.test.tsx` (L7 e L8), `LoginPage.test.tsx`, `InvitationPage.test.tsx` (C5b: os textos da imagem não mudam); E7f (login e telas, com e sem a meta) e E8 (a etiqueta aparece na tela da ficha e some na impressão, nos quatro temas); `prod-check` (meta na pilha sem a variável, `true`, `false`, vazia, seis valores recusados e a subida completa do container recusada).
+- **Proteção de dados reais que podem coincidir:** Leads e acompanhantes sem CPF (um CPF com dígito válido gerado ao acaso pode ser de uma pessoa real); telefones num padrão claramente fictício, aceito pela validação do formulário de Lead (conferido no PR da carga, com a edição de um Lead da carga pela API); e-mails em `example.com`; nomes com primeiro nome comum e sobrenome frequente, sem sobrenomes que identifiquem alguém.
+- **Usuários (confirmado):** ADMIN, Prospector, Portaria e Anfitrião da demonstração, em e-mails fixos de `example.com`, com as senhas informadas no momento da carga, nunca no repositório nem em arquivo, e sem troca obrigatória no primeiro acesso. O ADMIN da demonstração é separado do ADMIN inicial, que continua sendo o do operador, com troca obrigatória. Os demais Prospectores ficam com senha aleatória descartada: existem só para os dados.
+- **Conteúdo:** de 6 a 8 semanas de histórico e visitas agendadas nos próximos dias, relativos à data da carga, com semente fixa. Prospectores com desempenhos diferentes; visitas realizadas, sem comparecimento e canceladas com os três motivos; acompanhantes com presença parcial; negativas na Portaria com os cinco motivos, com cancelado e expirado em número pequeno (confirmado); uma ou duas visitas para hoje, para a Portaria e a lista de chegadas ao vivo. Visitas, convites, acessos e Leads em estados coerentes entre si. Auditoria só da criação dos usuários da demonstração (`USER_CREATED` com origem `DEMO`). O volume e os totais ficam registrados no PR da carga.
+- **Operação:**
+  - `scripts/demo-load.sh` confere `DEMO_INSTANCE=true`, pede as senhas sem eco e roda o serviço `demo-load` (perfil `demo` do compose), que conecta como `resort_app`.
+  - `scripts/demo-reset.sh` recria o banco e carrega de novo. É destrutivo e tem as mesmas proteções da carga: só roda com `DEMO_INSTANCE=true` e com o domínio digitado para confirmar e, **antes de recriar o banco, confere pelo conteúdo que todos os usuários são os da demonstração (os e-mails da carga) ou o ADMIN inicial; com qualquer outro usuário, recusa sem tocar em nada** (ajuste da aprovação). Motivo: se `DEMO_INSTANCE=true` for ligado por engano na produção, digitar o domínio não protege, porque o domínio é o da produção.
+  - As visitas de hoje valem só no dia da carga: o job das 00:15 marca como não comparecidas as que ficaram agendadas. A recarga é feita no dia da apresentação.
+- **Descartado:** carga pelas regras da API, que não aceitam histórico no passado; SQL puro no repositório, sem BCrypt nem o gerador de código; apagar só os dados da demonstração, que o `audit_logs` somente de inserção (D-028) não permite; uma tabela ou migration para marcar a instalação; a etiqueta vinda do backend, que exigiria um endpoint público novo, quando a meta do Nginx já serve ao login.
+- **Divisão (confirmada):** PR A com a etiqueta, esta decisão, a regra 10 e a SPEC; PR B com a carga, os dois scripts, o compose, o `DEPLOY.md` e os testes da trava 2, da recarga e do conteúdo.
+- **Complemento (PR B, a carga):**
+  - **Volume (Samuel):** em média 3 visitas por dia de segunda a sexta e 11 no sábado e no domingo, com 8 Prospectores (limite pedido para a tela de Prospectores e o filtro do dashboard não ficarem longos). Leads e negativas acompanham o volume. Semente fixa: o formato é o mesmo a cada carga, relativo ao dia.
+  - **Totais de uma carga feita em 30/09/2026:** 11 usuários (4 que entram no sistema e 7 Prospectores só de dados), 8 Prospectores, 427 Leads (178 visitados, 129 contatados, 40 com visita agendada, 11 descartados, 44 novos na carteira e 25 sem Prospector), 338 visitas (268 no histórico: 178 realizadas, 50 sem comparecimento, 29 canceladas pelo usuário e 11 pelo descarte do Lead; 30 remarcadas; 2 hoje; 38 nos próximos 10 dias), 429 acompanhantes (193 presentes nas visitas realizadas), 338 convites e 218 acessos (178 entradas e 40 negativas: 16 código inválido, 9 já utilizado, 9 fora da data, 3 cancelado e 3 expirado).
+  - **Desempenhos:** a taxa de visitas realizadas vai de cerca de 78% (o melhor Prospector) a 45% (o pior); o Prospector da demonstração (`prospector.demo@example.com`) é o segundo em volume.
+  - **Telefone com DDD 00:** conferido que a validação do formulário de Lead e a da API aceitam `(00) 9xxxx-xxxx` (só verificam o formato). O `DemoInstanceTest` edita um Lead da carga pela API, com o que o formulário envia, e recebe 200.
+  - **Código:** pacote `demo` do backend. `DemoLoadMain` (no padrão do `MigrateMain`, sem subir a aplicação; saída 0, 2 para recusa de trava e 1 para erro; o modo `check-reset` só confere a recarga), `DemoDataPlan` (gera os dados em memória) e `DemoLoader` (as travas e a gravação numa transação só). A saída mostra os totais e os e-mails dos usuários; nunca senha nem código de convite, e uma falha do banco mostra só o `SQLState`, porque o detalhe do PostgreSQL repete o valor da chave.
+  - **Scripts:** nenhum comando do compose lê a entrada padrão, que fica só para as senhas e o domínio digitado (o `run` e o `exec` a consumiriam; achado no `prod-check`). A recarga confere o conteúdo antes de qualquer coisa e de novo com o backend parado, logo antes de apagar; se a segunda conferência recusar, sobe a pilha de novo.
+  - **Testes:** `DemoLoadMainTest` (trava 1 sem banco, com a porta fechada provando que a recusa vem antes de conectar), `DemoDataPlanTest` (coerência de visita, convite, acesso e Lead em quatro "agoras", inclusive perto da meia-noite; nada no futuro; nenhum dado que possa ser de pessoa real; volume; proporções; os cinco motivos), `DemoInstanceTest` (banco como o da produção e a aplicação no perfil `prod`: trava 2, carga, segunda carga, login sem troca de senha, edição de Lead, a Portaria liberando o convite de hoje, a lista de chegadas, o dashboard e a proteção da recarga) e o `prod-check` (os dois scripts na pilha local: sem a variável, banco com dados, banco com usuários de verdade, carga, domínio errado, recarga e usuário criado durante a apresentação). Mutações conferidas: tirar a conferência das tabelas de negócio, aceitar qualquer usuário na recarga e deixar o Lead de uma visita sem comparecimento como agendado fazem os testes reprovarem.
+  - **Usuário criado durante a apresentação:** a recarga passa a recusar, como pedido, e a recriação fica manual (`docs/DEPLOY.md`, seção 14). Por isso, o runbook orienta não criar usuários durante a apresentação.
+
+- **Complemento (PR 2 da D-128, pedido na revisão):**
+  - **Histórico de 180 dias**, para as comparações de 30 e 90 dias terem base no período anterior.
+  - **Uma das duas visitas de hoje já com entrada**, se a carga roda depois das 8h10, para o quadro "Hoje na sala de vendas" mostrar uma chegada; a outra fica para a Portaria liberar ao vivo, e as duas têm acompanhantes. Antes das 8h10, as duas ficam agendadas. A entrada fica no passado (no máximo 10 minutos antes da carga), com convite usado, acesso liberado e Lead visitado.
+  - **Nomes sem repetição:** primeiro nome (às vezes composto, como "Ana Paula") e dois sobrenomes; nenhum nome completo de Lead se repete na carga, e na mesma visita nenhum acompanhante repete outro nem o Lead. O e-mail usa o primeiro nome e o primeiro sobrenome, com número se repetir.
+  - **Totais de uma carga feita em 30/09/2026 às 15h:** 11 usuários, 8 Prospectores, 1.343 Leads (622 visitados, 474 contatados, 40 com visita agendada, 51 descartados, 131 novos na carteira e 25 sem Prospector), 1.085 visitas (973 no histórico: 621 realizadas, 182 sem comparecimento, 119 canceladas pelo usuário e 51 pelo descarte do Lead; 71 remarcadas; 2 hoje, uma já com entrada; 39 nos próximos 10 dias), 1.349 acompanhantes (657 presentes nas visitas realizadas), 1.085 convites e 768 acessos (622 entradas e 146 negativas: 58 código inválido, 32 já utilizado, 32 fora da data, 12 cancelado e 12 expirado).
+  - **Testes:** `DemoDataPlanTest` (volume pelos dias úteis e de fim de semana dos 180 dias, uma visita de hoje com entrada e outra agendada, nenhuma antes das 8h, nomes completos únicos de Lead e de acompanhante na visita) e `DemoInstanceTest` (a Portaria libera a de hoje que ainda espera; o dashboard da D-128 com a carga).
+
+- **Complemento (v0.3.0, pedido na revisão das capturas):**
+  - **Nome do ADMIN da demonstração informado na carga**, como as senhas: `DEMO_ADMIN_NAME`, obrigatório e sem padrão no repositório (de 2 a 120 caracteres, sem quebra de linha; a carga recusa antes de conectar). O `demo-load.sh` e o `demo-reset.sh` perguntam se não vier no ambiente (a recarga pergunta antes de apagar). A saudação do dashboard usa o primeiro nome. O nome não aparece na saída da carga.
+  - **5 ou 6 visitas hoje**, perto da média do histórico. Se a carga roda depois das 8h10, 3 ou 4 já entraram, com as entradas espalhadas das 8h até 10 minutos antes da carga (no máximo 17h), e 2, com acompanhantes, ficam para a Portaria liberar ao vivo (`PENDING_TODAY`). Antes das 8h10, todas ficam agendadas.
+  - **Totais de uma carga feita em 30/09/2026 às 15h:** 11 usuários, 8 Prospectores, 1.343 Leads (624 visitados, 478 contatados, 38 com visita agendada, 51 descartados, 127 novos na carteira e 25 sem Prospector), 1.085 visitas (973 no histórico: 621 realizadas, 182 sem comparecimento, 119 canceladas pelo usuário e 51 pelo descarte do Lead; 71 remarcadas; 5 hoje, 3 já com entrada; 36 nos próximos 10 dias), 1.345 acompanhantes (659 presentes nas visitas realizadas), 1.085 convites e 770 acessos (624 entradas e 146 negativas: 58 código inválido, 32 já utilizado, 32 fora da data, 12 cancelado e 12 expirado).
+  - **Testes:** `DemoLoadMainTest` (nome ausente, em branco, curto, com quebra de linha ou tab, e longo demais recusados antes de conectar), `DemoDataPlanTest` (5 ou 6 hoje, 3 ou 4 entradas entre 8h e a carga, 2 pendentes com acompanhantes, nenhuma entrada antes das 8h10, o nome do ADMIN), `DemoInstanceTest` (o login do ADMIN da demonstração com o nome da carga; a Portaria e o dashboard com as visitas de hoje) e o `prod-check` (o nome depois da recarga).
+
+## D-126 — Paleta "Lago e ouro" e logotipo do Resortric
+
+- **Contexto:** acabamento para a apresentação, pedido pelo Samuel antes da `v0.3.0`: identidade padrão com mais acolhimento e um toque de alto padrão, sem perder a regra de contraste (D-118) nem o tema por cliente (D-115).
+- **Decisão (atualiza a D-116):**
+  - **Paleta:** principal `#1f4e79` (a de sempre); detalhe dourado `#b08d57`, só decorativo e nunca texto (3,09:1 com branco; se um dia houver texto dourado, `#7a5c1e`, 6,22:1); base do fundo areia `#faf8f4`, no lugar do cinza frio; texto `#1c1917`.
+  - **Logotipo** (`frontend/public/resortric.svg`): símbolo circular na cor principal com duas ondas, a de cima branca e a de baixo dourada, e a palavra com "Resort" em traço normal e "ric" em traço grosso. As letras continuam desenhadas como traços, sem depender de fonte instalada.
+  - **Favicon** (`favicon.svg`): só o símbolo.
+  - **Tema de cliente = `BRAND_COLOR` informado ou logotipo** (confirmado). A meta de cor vazia é diferente de cor informada: `BRAND_COLOR=#1f4e79` também é tema de cliente. Só `RESORT_NAME` não é tema: o nome aparece em texto (D-117), e as cores e o dourado continuam os do Resortric.
+  - **Onde o dourado aparece, só sem tema de cliente:** a onda de baixo do símbolo (cabeçalho, login, ficha, rodapé e favicon), a linha curta sob a identidade no login, o último trecho (15%) da faixa de 4 px do topo e, no PR 2, o 1º lugar do "Desempenho por Prospector" (D-128). Tudo pela variável `--brand-accent`: sem tema, o dourado; com tema, a própria cor principal, e o detalhe se funde na faixa ou vira a cor do cliente na linha do login.
+  - **Com tema de cliente, sem dourado:** o logotipo e o favicon passam às versões `resortric-mono.svg` e `favicon-mono.svg`, com as duas ondas brancas. O `main.tsx` troca o favicon junto com as cores, antes do primeiro render.
+  - A imagem do convite não muda: sem logotipo e sem nome, ela já escreve "Resortric" em texto (D-117).
+- **Descartado:** logotipo como componente SVG no React, que ficaria duplicado num arquivo para a ficha impressa; dourado também com tema de cliente, contra o pedido; favicon fixo com dourado (a troca no `main.tsx` custa uma linha).
+- **Testes:** `brand.test.ts` (tema de cliente pela cor ou pelo logotipo e não pelo nome; dourado, logotipo e favicon em cada caso); `AppLayout.test.tsx` e `LoginPage.test.tsx` (rodapé sem dourado com tema; faixa e linha curta em `--brand-accent`); E7a a E7g (cores medidas pelo navegador: fim da faixa e linha do login em dourado sem tema, só com o nome e com tema; favicon e logotipo mono com tema).
+
+## D-127 — Tingimento pela cor principal
+
+- **Decisão (amplia a D-118):** as superfícies neutras levam um pouco da cor principal, do Resortric ou do cliente, com intensidade média. As contas ficam no `brandPalette()` e entram no `:root` pelo `applyBrand()`, como as da D-118:
+  - **fundo das telas** (`--page`): areia com 3,5% da principal (`#f2f2f0` com a cor padrão, `#faf7ec` com `#f5d90a`);
+  - **superfícies suaves:** `--muted`, `--accent` e `--secondary` com 7% (hover, cabeçalho de tabela, botões secundários); `--soft-strong` com 14% (item ativo do menu, chips de ícone);
+  - **bordas e campos** (`--border`, `--input`): cinza `#e7e5e4` com 12% da principal;
+  - **brancos:** cabeçalho do sistema, cartões, menus, diálogos e os campos de formulário (antes transparentes, que mostrariam o fundo tingido).
+- **Texto secundário:** `--muted-foreground` passa de `#737373` para `#57534e`. O cinza anterior caía para 3,2 a 4,3:1 sobre a superfície de 14%; o novo atinge 5,21:1 no pior caso de uma varredura de 4.096 cores e 7,63:1 sobre o branco.
+- **Borda do item ativo:** `--primary-edge` precisa de 3:1 contra o branco e também contra `--soft-strong`, que é o fundo do item ativo; senão, a cor é escurecida até atingir os dois.
+- **Sem mudança:** cores de status (D-120), séries dos gráficos (D-100), anel de foco neutro e as regras de texto e hover da D-118.
+- **Descartado:** tingir por opacidade (`bg-primary/5`), com o contraste dependendo do que estiver atrás; manter o `#737373`, que reprova.
+- **Testes:** varredura de 4.096 cores (texto e texto secundário com pelo menos 4,5:1 sobre `--page`, `--muted` e `--soft-strong`; borda com pelo menos 3:1 contra o branco e `--soft-strong`); valores de referência da cor padrão e de `#f5d90a`; E7a (fundo tingido medido, cabeçalho branco, texto secundário com 4,5:1 sobre o fundo) e E7d (com `#f5d90a`, a linha do item ativo com 3:1 contra o fundo dele e o texto com 4,5:1).
+
+## D-128 — Dashboard da apresentação
+
+- **Contexto:** pedido do Samuel antes da `v0.3.0`, para a apresentação: faixa na cor principal, saudação, período em botões, comparação com o período anterior, as visitas de hoje e o desempenho por Prospector. Amplia a D-098 e muda a D-100 (confirmado na aprovação do plano).
+- **Faixa (item 5 da paleta):** só no `/dashboard`, de ponta a ponta da tela, com sombra recortada (`box-shadow` e `clip-path`) em vez de `100vw`, que criaria rolagem horizontal. Todo texto sobre ela, inclusive o secundário, usa `--primary-foreground` (D-118), sem transparência. Nela: "Dashboard · quarta-feira, 30 de setembro", a saudação, o resumo de hoje, o período e os filtros. Os cartões do período sobem sobre a faixa.
+- **Saudação e resumo:** o backend devolve `greeting` (`MORNING` de 05:00 a 11:59, `AFTERNOON` de 12:00 a 17:59, `EVENING` de 18:00 a 04:59) pelo `Clock` em `APP_TIMEZONE`, porque o frontend tem o fuso fixo no código. A data por extenso vem do `today` da resposta. O nome é o primeiro do usuário da sessão. Resumo: "Hoje há 6 visitas; 2 já chegaram." (as que chegaram também contam; ajuste da revisão), "1 já chegou", "nenhuma chegou ainda" e "Nenhuma visita para hoje.". Novo `arrivedToday`: visitas de hoje `COMPLETED`, pelo crédito (D-013), com o filtro aplicado.
+- **Período:** ADMIN com 7, 30 e 90 dias até hoje e "Personalizado", que mostra os dois campos de data da D-100 (máximo de 366 dias). PROSPECTOR com 7, 30 e 90 dias, sem "Personalizado" (confirmado; a API já aceitava `from` e `to` dele, D-098). Padrão: 30 dias.
+- **Comparação:** novo `previous` no resumo, com o período anterior de mesmo tamanho (`from − n` a `from − 1`), calculado na mesma passada do SQL das visitas e numa contagem a mais de pessoas recebidas. Só os indicadores de período têm comparação; as fotografias (Total de Leads, Leads atribuídos, Visitas agendadas, Visitas hoje, Convites ativos) não têm histórico no banco.
+  - Contagens em %: "▲ 25% a mais que nos 30 dias anteriores", "▼ 17% a menos…", "= igual aos 30 dias anteriores"; abaixo de 1%, "menos de 1%".
+  - Taxa em pontos percentuais, sobre as taxas arredondadas que a tela mostra.
+  - Período anterior zerado (ou taxa sem base): "sem comparação".
+  - Cor pelo sentido bom ou ruim, nas cores fixas da D-120 (`#15803d` e `#b91c1c`, com 5,02:1 e 6,47:1 sobre o branco): mais realizadas, comparecimento e pessoas é bom; mais sem comparecimento e cancelamentos é ruim. Sempre com seta e texto, e "melhora" ou "piora" para o leitor de tela.
+- **Cartões:** "No período" (sobre a faixa, com chip de ícone em `--soft-strong` e o ícone em `--primary-edge`): Visitas realizadas, Comparecimento (nova taxa: realizadas ÷ realizadas + sem comparecimento; sem nenhuma, "—"), Sem comparecimento, Cancelamentos e Pessoas recebidas. "Agora": as cinco fotografias. Nenhum indicador saiu. O PROSPECTOR tem Visitas realizadas e Comparecimento com comparação (o resumo dele ganha `noShows`) e as quatro fotografias.
+- **"Sem comparecimento" em toda a interface** (pedido na revisão): no lugar de "No-show" (cartão e série do dashboard) e de "Não compareceu" (status da visita na lista, no detalhe e nos filtros, ação da auditoria e o valor do status na exportação de visitas, D-101).
+- **"Hoje na sala de vendas":** novo `todayVisits` no resumo, com as visitas de hoje `SCHEDULED` ou `COMPLETED` pelo crédito (as mesmas do cartão "Visitas hoje"), no máximo 50: Lead, Prospector, acompanhantes ("3 acompanhantes"; com a entrada, "2 de 3 acompanhantes presentes") e o estado ("Agendada", ou "Chegou às 09:40" na cor fixa de liberado). Ordem: as que chegaram pela hora da entrada, depois as agendadas pelo nome do Lead (confirmado). A visita não tem horário marcado, e nenhum é inventado. Link "Ver chegadas" para `/chegadas`. Só dados que a tela de Chegadas já mostra (§15, D-095).
+- **Desempenho por Prospector (sexto item, só ADMIN):** `GET /api/dashboard/prospector-performance?from&to`, com `{ prospectorId, name, completedVisits, noShows, attendanceRate }` de quem teve ao menos uma visita realizada ou sem comparecimento no período, pela data da visita e pelo crédito; ordem por realizadas, depois taxa e nome. Compara todos, sem o filtro de Prospector. Na tela, a tabela com a barra da taxa; o 1º lugar leva `--brand-accent` (dourado só na identidade do Resortric, D-126; texto `--brand-accent-foreground`, 5,6:1 sobre o dourado); clicar numa linha aplica o filtro daquele Prospector e clicar de novo tira.
+- **Menu do ADMIN em uma linha a 1280 px** (pedido na revisão): com os dez itens lado a lado, Usuários e Auditoria quebravam para a segunda linha. No computador, Exportações, Usuários e Auditoria (os três últimos da §16.1, então a ordem não muda) ficam no submenu "Administração", marcado como ativo quando a tela atual está nele; o espaçamento dos itens e do cabeçalho caiu um pouco, e o nome do usuário e o `RESORT_NAME` no cabeçalho são cortados com reticências (o nome completo continua no menu e no `title`). Na v0.3.0, o nome do usuário passou de 160 px (que cortava "Administrador (demonstração)") para até 208 px; o E10 entra com um ADMIN chamado "Carlos Eduardo Silva" e confere o nome inteiro, sem corte, com o menu numa linha nos três temas (mutação conferida: com 112 px, o E10 reprova). O `RESORT_NAME` em texto continua com até 192 px e reticências. No celular, o menu continua com a lista inteira (D-122).
+- **Descartado:** comparar as fotografias (exigiria histórico); seletor translúcido sobre a faixa (contraste imprevisível); só reduzir espaçamentos no menu (um logotipo largo ou um nome longo voltariam a quebrar a linha); mostrar a taxa dentro do cartão de realizadas (duas comparações no mesmo cartão).
+- **Testes:**
+  - Backend: saudação nos limites (04:59, 05:00, 11:59, 12:00, 17:59, 18:00), período anterior (inclusive com 366 dias), visitas de hoje (ordem, acompanhantes, cancelada fora, escopo do PROSPECTOR e do filtro), desempenho (ordem, empate pela taxa e pelo nome, período, só quem teve visitas), 403 para PROSPECTOR, GATE e HOST, e o número fixo de consultas. O contador de statements deixou de contar os da Spring Session: com o servidor numa porta real, a sessão é gravada depois da resposta, e o statement da requisição anterior caía na janela medida da seguinte.
+  - Vitest: textos e contas (`insights.test.ts`), faixa, cartões e comparações, quadro de hoje, botões de período, filtros, ranking e o clique, negativas, e o PROSPECTOR sem negativas, desempenho ou `prospectorId`.
+  - E2E E10: o menu do ADMIN numa linha a 1280 px sem tema, com o tema escuro com logotipo e com `#f5d90a` (mutação conferida: com só Auditoria no submenu, o E10 reprova); contraste do texto sobre a faixa nos três temas; uma chegada e uma negativa feitas na hora aparecendo; o filtro pelo ranking; nenhuma rolagem horizontal a 390 px. E3 e E5 abrem Usuários pelo submenu.
+  - `DemoInstanceTest`: o dashboard com a carga (visitas de hoje, comparação com base nos 30 e nos 90 dias, 8 Prospectores no desempenho e os cinco motivos de negativa).
+
+## D-129 — Negativas por motivo no lugar dos acessos por dia
+
+- **Decisão (muda a D-098 e a D-100):** o gráfico "Acessos por dia" sai, e o endpoint `GET /api/dashboard/access-by-day` é removido com os testes dele (confirmado). Motivos: as entradas liberadas já aparecem como visitas realizadas em "Visitas por dia", e a altura da barra somava tentativas repetidas, sem dizer o que deu errado na Portaria.
+- **No lugar:** `GET /api/dashboard/denials?from&to&prospectorId`, só do ADMIN, com `{ from, to, total, reasons: [{ reason, count }] }`: os cinco motivos, inclusive os de zero, do mais frequente ao menos (empate na ordem do enum), pelo `created_at` da tentativa em `APP_TIMEZONE`. Cada tentativa negada conta uma vez. Com o filtro de Prospector, só as ligadas a um convite dele; "Código inválido" (sem convite) fica de fora, como nas exportações (D-101), e a tela avisa.
+- **Tela:** "Por que a portaria negou", em barras horizontais na cor fixa de negado (D-120), com o número sempre visível ao lado de cada barra e a tabela equivalente em "Ver tabela" (D-100). Sem negativas: "Nenhuma negativa no período.". As barras são elementos HTML com a largura por CSSOM, sem `<style>` inline (CSP, D-107; conferido no E5 e no E10).
+- **Descartado:** manter os dois gráficos (redundante); empilhar os motivos por dia (barras pequenas e cinco cores a mais na paleta da D-100).
+- **Testes:** contagem por motivo e período, a tentativa das 23:59 no dia certo, o filtro sem "Código inválido", 403 para os outros perfis, a rota antiga com 404 e o número fixo de consultas.
