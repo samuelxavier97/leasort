@@ -1,14 +1,20 @@
 /** Nome do produto (D-116): o único lugar em que ele é escrito. */
 export const PRODUCT_NAME = 'Resortric'
 
-/** Cor principal padrão do Resortric (D-116), usada sem `BRAND_COLOR` ou com valor inválido. */
+/** Cor principal padrão do Resortric (D-116, D-126), usada sem `BRAND_COLOR` ou com valor inválido. */
 export const DEFAULT_BRAND_COLOR = '#1f4e79'
+
+/** Dourado do Resortric (D-126): só decorativo, nunca texto (3,1:1 com branco), e nunca com tema de cliente. */
+export const PRODUCT_GOLD = '#b08d57'
 
 /** Único endereço aceito para o logotipo: a cópia validada pelo Nginx na subida (D-115, D-119). */
 export const BRAND_LOGO_URL = '/brand/logo.png'
 
-/** Logotipo tipográfico do Resortric (D-116). */
+/** Logotipo do Resortric (D-126): símbolo com a onda dourada e a palavra. */
 export const PRODUCT_LOGO_URL = '/resortric.svg'
+
+/** O mesmo logotipo com as duas ondas brancas, para quando há tema de cliente (D-126). */
+export const PRODUCT_LOGO_MONO_URL = '/resortric-mono.svg'
 
 const HEX_COLOR = /^#[0-9a-fA-F]{6}$/
 
@@ -19,6 +25,8 @@ export interface Brand {
   color: string
   /** `/brand/logo.png`, ou null sem logotipo. */
   logoUrl: string | null
+  /** `BRAND_COLOR` informado (e válido); vazio não é tema de cliente, mesmo com a mesma cor (D-126). */
+  customColor: boolean
 }
 
 function meta(doc: Document, name: string): string {
@@ -33,11 +41,31 @@ function meta(doc: Document, name: string): string {
 export function readBrand(doc: Document = document): Brand {
   const color = meta(doc, 'resort-brand-color')
   const logo = meta(doc, 'resort-brand-logo')
+  const customColor = HEX_COLOR.test(color)
   return {
     resortName: meta(doc, 'resort-name') || null,
-    color: HEX_COLOR.test(color) ? color.toLowerCase() : DEFAULT_BRAND_COLOR,
+    color: customColor ? color.toLowerCase() : DEFAULT_BRAND_COLOR,
     logoUrl: logo === BRAND_LOGO_URL ? BRAND_LOGO_URL : null,
+    customColor,
   }
+}
+
+/**
+ * Tema de cliente (D-126): `BRAND_COLOR` ou logotipo. Só `RESORT_NAME` não é tema: o nome aparece em
+ * texto, e as cores e o dourado continuam os do Resortric.
+ */
+export function hasClientTheme(brand: Brand): boolean {
+  return brand.customColor || brand.logoUrl !== null
+}
+
+/** Logotipo do Resortric para o tema atual: com tema de cliente, a versão sem dourado (D-126). */
+export function productLogoUrl(brand: Brand): string {
+  return hasClientTheme(brand) ? PRODUCT_LOGO_MONO_URL : PRODUCT_LOGO_URL
+}
+
+/** Favicon: só o símbolo, também sem dourado com tema de cliente (D-126). */
+export function faviconUrl(brand: Brand): string {
+  return hasClientTheme(brand) ? '/favicon-mono.svg' : '/favicon.svg'
 }
 
 /** Etiqueta do rodapé numa instalação de demonstração (D-125). */
@@ -105,21 +133,49 @@ export const TEXT_CONTRAST = 4.5
 export const EDGE_CONTRAST = 3
 const HOVER_MIX = 0.12
 
+/**
+ * Tingimento pela cor principal (D-127), intensidade média: o fundo das telas é a base areia com 3,5% da
+ * principal; as superfícies suaves, 7% (hover, cabeçalho de tabela) e 14% (item ativo, chips de ícone);
+ * as bordas, o cinza com 12%. Cabeçalho do sistema e cartões continuam brancos.
+ */
+export const SAND = '#faf8f4'
+const BORDER_GRAY = '#e7e5e4'
+const PAGE_MIX = 0.035
+const SOFT_MIX = 0.07
+const SOFT_STRONG_MIX = 0.14
+const BORDER_MIX = 0.12
+
 export interface BrandPalette {
   primary: string
   /** Texto sobre a cor: branco se atingir 4,5:1; senão, preto puro (sempre atinge). */
   foreground: string
   /** Escurece com texto branco e clareia com texto preto: o contraste nunca cai. */
   hover: string
-  /** Borda e indicador: a cor com 3:1 contra o branco, ou a cor escurecida até 3:1. */
+  /** Borda e indicador: a cor com 3:1 contra o branco e contra `softStrong`, ou escurecida até atingir. */
   edge: string
+  /** Fundo das telas. */
+  page: string
+  /** Superfície suave: hover, cabeçalho de tabela (`--muted`, `--accent`, `--secondary`). */
+  soft: string
+  /** Superfície suave forte: item ativo do menu, chips de ícone. */
+  softStrong: string
+  /** Bordas e contorno dos campos. */
+  border: string
+}
+
+/** A base (`#rrggbb`) com `amount` da cor principal. */
+function tint(base: string, rgb: Rgb, amount: number): string {
+  return toHex(mix(toRgb(base), rgb, amount))
 }
 
 export function brandPalette(color: string): BrandPalette {
   const rgb = toRgb(color)
   const whiteText = contrastRatio(color, '#ffffff') >= TEXT_CONTRAST
+  const softStrong = tint(SAND, rgb, SOFT_STRONG_MIX)
+  // O indicador do item ativo fica sobre o fundo 14% e encosta no cabeçalho branco: 3:1 contra os dois.
+  const edgeContrast = (edge: Rgb) => Math.min(contrastRatio(toHex(edge), '#ffffff'), contrastRatio(toHex(edge), softStrong))
   let edge = rgb
-  for (let step = 1; contrastRatio(toHex(edge), '#ffffff') < EDGE_CONTRAST; step++) {
+  for (let step = 1; edgeContrast(edge) < EDGE_CONTRAST; step++) {
     edge = mix(rgb, BLACK, step / 20)
   }
   return {
@@ -127,14 +183,29 @@ export function brandPalette(color: string): BrandPalette {
     foreground: whiteText ? '#ffffff' : '#000000',
     hover: toHex(mix(rgb, whiteText ? BLACK : WHITE, HOVER_MIX)),
     edge: toHex(edge),
+    page: tint(SAND, rgb, PAGE_MIX),
+    soft: tint(SAND, rgb, SOFT_MIX),
+    softStrong,
+    border: tint(BORDER_GRAY, rgb, BORDER_MIX),
   }
 }
 
-/** Aplica a cor principal no `:root` por CSSOM, sem `<style>` inline (a CSP, D-107). */
+/**
+ * Aplica a cor principal e o tingimento no `:root` por CSSOM, sem `<style>` inline (a CSP, D-107), e
+ * troca o favicon. O dourado (`--brand-accent`) só existe sem tema de cliente; com ele, o detalhe vira a
+ * cor principal e some na faixa (D-126).
+ */
 export function applyBrand(root: HTMLElement, brand: Brand): void {
   const palette = brandPalette(brand.color)
-  root.style.setProperty('--primary', palette.primary)
-  root.style.setProperty('--primary-foreground', palette.foreground)
-  root.style.setProperty('--primary-hover', palette.hover)
-  root.style.setProperty('--primary-edge', palette.edge)
+  const set = (name: string, value: string) => root.style.setProperty(name, value)
+  set('--primary', palette.primary)
+  set('--primary-foreground', palette.foreground)
+  set('--primary-hover', palette.hover)
+  set('--primary-edge', palette.edge)
+  set('--page', palette.page)
+  set('--soft-strong', palette.softStrong)
+  for (const name of ['--muted', '--accent', '--secondary']) set(name, palette.soft)
+  for (const name of ['--border', '--input']) set(name, palette.border)
+  set('--brand-accent', hasClientTheme(brand) ? palette.primary : PRODUCT_GOLD)
+  root.ownerDocument.querySelector<HTMLLinkElement>('link[rel="icon"]')?.setAttribute('href', faviconUrl(brand))
 }

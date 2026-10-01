@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronDown, Menu } from 'lucide-react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router'
 import { BrandIdentity } from '@/components/BrandIdentity'
+import { BrandStripe } from '@/components/BrandStripe'
 import { ProductFooter } from '@/components/ProductFooter'
 import { Button } from '@/components/ui/button'
 import {
@@ -38,9 +39,9 @@ export function AppLayout() {
   }
 
   return (
-    <div className="flex min-h-svh flex-col bg-muted/40 print:block print:min-h-0 print:bg-white">
-      {/* Faixa na cor principal do cliente (D-117); o cabeçalho continua branco, para o logotipo. */}
-      <div aria-hidden="true" className="h-1 bg-primary print:hidden" />
+    <div className="flex min-h-svh flex-col bg-page print:block print:min-h-0 print:bg-white">
+      {/* Faixa na cor principal do cliente (D-117, D-126); o cabeçalho continua branco, para o logotipo. */}
+      <BrandStripe className="print:hidden" />
       <header className="border-b bg-background print:hidden">
         <div className="mx-auto flex max-w-6xl items-center gap-x-6 gap-y-2 px-4 py-3 md:flex-wrap">
           <Link to="/" className="flex min-w-0 shrink items-center">
@@ -57,7 +58,7 @@ export function AppLayout() {
                 className={({ isActive }) =>
                   cn(
                     'rounded-t-md border-b-2 border-transparent px-3 py-2 text-sm hover:bg-muted',
-                    isActive && 'border-primary-edge bg-muted font-semibold text-foreground',
+                    isActive && 'border-primary-edge bg-soft-strong font-semibold text-foreground',
                   )
                 }
               >
@@ -101,7 +102,7 @@ export function AppLayout() {
                     asChild
                     className={cn(
                       'min-h-10 border-l-2 border-transparent',
-                      location.pathname === item.to && 'border-primary-edge bg-muted font-semibold',
+                      location.pathname === item.to && 'border-primary-edge bg-soft-strong font-semibold',
                     )}
                   >
                     <NavLink to={item.to}>{item.label}</NavLink>

@@ -21,13 +21,39 @@ async function adminWithTheme(world: World, theme: Theme): Promise<Page> {
 
 const identity = (page: Page) => page.getByRole('banner').locator('a[href="/"]')
 
-test('E7a: sem tema, o cabeçalho e a aba mostram o Resortric', async ({ world }) => {
+/** Dourado do Resortric (D-126), só sem tema de cliente. */
+const GOLD = 'rgb(176, 141, 87)'
+
+/** O trecho final da faixa do topo (D-126): dourado sem tema; com tema de cliente, a própria cor. */
+async function stripeEnd(page: Page) {
+  return (await colorsOf(page.getByTestId('brand-stripe').locator('div'))).background
+}
+
+const favicon = (page: Page) => page.locator('link[rel="icon"]').getAttribute('href')
+
+test('E7a: sem tema, o cabeçalho e a aba mostram o Resortric, com o dourado e o tingimento da cor padrão', async ({ world }) => {
   const page = await adminWithTheme(world, { name: '', color: '', logo: false })
   const logo = identity(page).getByRole('img', { name: 'Resortric' })
   await expect(logo).toHaveAttribute('src', '/resortric.svg')
   await expect.poll(() => logo.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0)
   await expect(page).toHaveTitle('Leads · Resortric')
-  await expect(page.getByRole('contentinfo').getByRole('img', { name: 'Resortric' })).toBeVisible()
+  await expect(page.getByRole('contentinfo').getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
+  expect(await favicon(page)).toBe('/favicon.svg')
+  // Faixa na cor padrão com o trecho final dourado (D-126).
+  expect((await colorsOf(page.getByTestId('brand-stripe'))).background).toBe('rgb(31, 78, 121)')
+  expect(await stripeEnd(page)).toBe(GOLD)
+  // Fundo areia com 3,5% da principal; cabeçalho e tabela continuam brancos (D-127).
+  const body = await colorsOf(page.getByRole('banner').locator('..'))
+  expect(body.background).toBe('rgb(242, 242, 240)')
+  expect((await colorsOf(page.getByRole('banner'))).background).toBe('rgb(255, 255, 255)')
+  // Texto secundário com 4,5:1 sobre o fundo tingido.
+  const muted = await page.evaluate(() => {
+    const probe = document.createElement('p')
+    probe.className = 'text-muted-foreground'
+    document.body.append(probe)
+    return getComputedStyle(probe).color
+  })
+  expect(contrast(muted, body.background)).toBeGreaterThanOrEqual(4.5)
 })
 
 test('E7b: só com RESORT_NAME, o nome aparece em texto, nunca "Resortric", no cabeçalho e na aba', async ({ world }) => {
@@ -35,6 +61,9 @@ test('E7b: só com RESORT_NAME, o nome aparece em texto, nunca "Resortric", no c
   await expect(identity(page)).toHaveText(FICTIONAL_RESORT)
   await expect(page.getByRole('banner').getByRole('img', { name: 'Resortric' })).toHaveCount(0)
   await expect(page).toHaveTitle(`Leads · ${FICTIONAL_RESORT}`)
+  // Só o nome não é tema de cliente: o dourado continua (D-126).
+  expect(await stripeEnd(page)).toBe(GOLD)
+  expect(await favicon(page)).toBe('/favicon.svg')
 })
 
 test('E7c: nome, cor escura e logotipo: o logotipo por <img>, e o botão principal com contraste de 4,5:1', async ({ world }) => {
@@ -49,9 +78,11 @@ test('E7c: nome, cor escura e logotipo: o logotipo por <img>, e o botão princip
   expect(button.background).toBe('rgb(30, 58, 95)')
   expect(button.color).toBe('rgb(255, 255, 255)')
   expect(contrast(button.background, button.color)).toBeGreaterThanOrEqual(4.5)
-  // Faixa de 4 px na cor principal no topo (D-117).
-  const stripe = page.locator('[aria-hidden="true"].h-1').first()
-  expect((await colorsOf(stripe)).background).toBe('rgb(30, 58, 95)')
+  // Faixa de 4 px na cor principal no topo (D-117), sem o trecho dourado com tema de cliente (D-126).
+  expect((await colorsOf(page.getByTestId('brand-stripe'))).background).toBe('rgb(30, 58, 95)')
+  expect(await stripeEnd(page)).toBe('rgb(30, 58, 95)')
+  await expect(page.getByRole('contentinfo').getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric-mono.svg')
+  expect(await favicon(page)).toBe('/favicon-mono.svg')
 })
 
 test('E7d: cor clara (#f5d90a): texto preto no botão e item ativo do menu reconhecível sem depender da cor', async ({ world }) => {
@@ -66,12 +97,16 @@ test('E7d: cor clara (#f5d90a): texto preto no botão e item ativo do menu recon
   const menu = page.getByRole('navigation', { name: 'Menu principal' })
   const active = await colorsOf(menu.getByRole('link', { name: 'Leads', exact: true }))
   const inactive = await colorsOf(menu.getByRole('link', { name: 'Visitas', exact: true }))
-  // Três sinais: negrito, fundo e a linha na cor de borda (3:1 contra o branco).
+  // Três sinais: negrito, fundo e a linha na cor de borda (3:1 contra o branco e contra o fundo de 14%).
   expect(active.fontWeight).toBeGreaterThanOrEqual(600)
   expect(inactive.fontWeight).toBeLessThan(600)
   expect(active.background).not.toBe(inactive.background)
   expect(active.borderWidth).toBe('2px')
   expect(contrast(active.border, 'rgb(255, 255, 255)')).toBeGreaterThanOrEqual(3)
+  expect(contrast(active.border, active.background)).toBeGreaterThanOrEqual(3)
+  expect(contrast(active.color, active.background)).toBeGreaterThanOrEqual(4.5)
+  // Com cor clara, a faixa fica toda na cor do cliente, sem dourado (D-126).
+  expect(await stripeEnd(page)).toBe('rgb(245, 217, 10)')
 })
 
 test('E7e: login com o tema: o logotipo em destaque, a faixa na cor principal e o Resortric no rodapé', async ({ world }) => {
@@ -83,10 +118,24 @@ test('E7e: login com o tema: o logotipo em destaque, a faixa na cor principal e 
   const logo = page.getByTestId('auth-identity').getByRole('img', { name: FICTIONAL_RESORT })
   await expect.poll(() => logo.evaluate((image: HTMLImageElement) => image.naturalWidth)).toBe(480)
   await expect(page).toHaveTitle(`Entrar · ${FICTIONAL_RESORT}`)
-  await expect(page.getByRole('contentinfo').getByRole('img', { name: 'Resortric' })).toBeVisible()
+  await expect(page.getByRole('contentinfo').getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric-mono.svg')
   const button = await colorsOf(page.getByRole('button', { name: 'Entrar' }))
   expect(button.background).toBe('rgb(30, 58, 95)')
   expect(contrast(button.background, button.color)).toBeGreaterThanOrEqual(4.5)
+  // A linha curta sob a identidade usa a cor do cliente, sem dourado (D-126).
+  expect((await colorsOf(page.getByTestId('auth-accent'))).background).toBe('rgb(30, 58, 95)')
+})
+
+test('E7g: login sem tema: o logotipo do Resortric, a linha curta e o fim da faixa em dourado (D-126)', async ({ world }) => {
+  const context = await world.newContext('ADMIN')
+  await applyTheme(context, { name: '', color: '', logo: false })
+  const page = await context.newPage()
+  await page.goto('/login')
+  await expect(page.getByRole('heading', { name: 'Entrar' })).toBeVisible()
+  await expect(page.getByTestId('auth-identity').getByRole('img', { name: 'Resortric' })).toHaveAttribute('src', '/resortric.svg')
+  expect((await colorsOf(page.getByTestId('auth-accent'))).background).toBe(GOLD)
+  expect(await stripeEnd(page)).toBe(GOLD)
+  expect(await favicon(page)).toBe('/favicon.svg')
 })
 
 

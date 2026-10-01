@@ -136,7 +136,7 @@ export function UserFormDialog({
             <Label htmlFor="user-role">Perfil</Label>
             <select
               id="user-role"
-              className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm disabled:opacity-50"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
               disabled={roleOptions.length === 1}
               {...register('role')}
             >

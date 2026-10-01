@@ -50,7 +50,7 @@ export function AuditPage() {
 
   const users = useQuery({ queryKey: [...usersQueryKey, 'all'], queryFn: () => listUsers(0, 100) })
   const audit = useQuery({ queryKey: [...auditQueryKey, filters], queryFn: () => searchAudit(filters) })
-  const select = 'h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm'
+  const select = 'h-9 w-full rounded-md border border-input bg-background px-3 text-sm'
 
   return (
     <section className="space-y-4">

@@ -67,7 +67,7 @@ export function AdminDashboard() {
           <Label htmlFor="dashboard-prospector">Prospector</Label>
           <select
             id="dashboard-prospector"
-            className="h-9 w-56 max-w-full rounded-md border border-input bg-transparent px-3 text-sm"
+            className="h-9 w-56 max-w-full rounded-md border border-input bg-background px-3 text-sm"
             value={prospectorId}
             onChange={(e) => update({ prospectorId: e.target.value })}
           >

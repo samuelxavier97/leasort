@@ -937,6 +937,7 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - Favicon fixo (`frontend/public/favicon.svg`): o "R" no mesmo traço, em branco sobre a cor padrão. Substitui o favicon padrão do Vite, que o projeto trazia desde a Fase 1.
   - Cor padrão: `#1f4e79` (8,66:1 com texto branco).
 - **Descartado:** favicon a partir do logotipo do cliente (logotipo largo fica ilegível a 16 px) ou um terceiro arquivo de configuração só para ele (confirmado).
+- **Atualizada pela D-126:** logotipo com símbolo, favicon só com o símbolo e paleta "Lago e ouro". O nome do produto e a cor principal padrão não mudam.
 
 ## D-117 — Hierarquia da identidade do cliente
 
@@ -1078,3 +1079,30 @@ Formato: **Contexto**, **Decisão**, **Descartado**, **Impacto**.
   - **Scripts:** nenhum comando do compose lê a entrada padrão, que fica só para as senhas e o domínio digitado (o `run` e o `exec` a consumiriam; achado no `prod-check`). A recarga confere o conteúdo antes de qualquer coisa e de novo com o backend parado, logo antes de apagar; se a segunda conferência recusar, sobe a pilha de novo.
   - **Testes:** `DemoLoadMainTest` (trava 1 sem banco, com a porta fechada provando que a recusa vem antes de conectar), `DemoDataPlanTest` (coerência de visita, convite, acesso e Lead em quatro "agoras", inclusive perto da meia-noite; nada no futuro; nenhum dado que possa ser de pessoa real; volume; proporções; os cinco motivos), `DemoInstanceTest` (banco como o da produção e a aplicação no perfil `prod`: trava 2, carga, segunda carga, login sem troca de senha, edição de Lead, a Portaria liberando o convite de hoje, a lista de chegadas, o dashboard e a proteção da recarga) e o `prod-check` (os dois scripts na pilha local: sem a variável, banco com dados, banco com usuários de verdade, carga, domínio errado, recarga e usuário criado durante a apresentação). Mutações conferidas: tirar a conferência das tabelas de negócio, aceitar qualquer usuário na recarga e deixar o Lead de uma visita sem comparecimento como agendado fazem os testes reprovarem.
   - **Usuário criado durante a apresentação:** a recarga passa a recusar, como pedido, e a recriação fica manual (`docs/DEPLOY.md`, seção 14). Por isso, o runbook orienta não criar usuários durante a apresentação.
+
+## D-126 — Paleta "Lago e ouro" e logotipo do Resortric
+
+- **Contexto:** acabamento para a apresentação, pedido pelo Samuel antes da `v0.3.0`: identidade padrão com mais acolhimento e um toque de alto padrão, sem perder a regra de contraste (D-118) nem o tema por cliente (D-115).
+- **Decisão (atualiza a D-116):**
+  - **Paleta:** principal `#1f4e79` (a de sempre); detalhe dourado `#b08d57`, só decorativo e nunca texto (3,09:1 com branco; se um dia houver texto dourado, `#7a5c1e`, 6,22:1); base do fundo areia `#faf8f4`, no lugar do cinza frio; texto `#1c1917`.
+  - **Logotipo** (`frontend/public/resortric.svg`): símbolo circular na cor principal com duas ondas, a de cima branca e a de baixo dourada, e a palavra com "Resort" em traço normal e "ric" em traço grosso. As letras continuam desenhadas como traços, sem depender de fonte instalada.
+  - **Favicon** (`favicon.svg`): só o símbolo.
+  - **Tema de cliente = `BRAND_COLOR` informado ou logotipo** (confirmado). A meta de cor vazia é diferente de cor informada: `BRAND_COLOR=#1f4e79` também é tema de cliente. Só `RESORT_NAME` não é tema: o nome aparece em texto (D-117), e as cores e o dourado continuam os do Resortric.
+  - **Onde o dourado aparece, só sem tema de cliente:** a onda de baixo do símbolo (cabeçalho, login, ficha, rodapé e favicon), a linha curta sob a identidade no login, o último trecho (15%) da faixa de 4 px do topo e, no PR 2, o 1º lugar do "Desempenho por Prospector" (D-128). Tudo pela variável `--brand-accent`: sem tema, o dourado; com tema, a própria cor principal, e o detalhe se funde na faixa ou vira a cor do cliente na linha do login.
+  - **Com tema de cliente, sem dourado:** o logotipo e o favicon passam às versões `resortric-mono.svg` e `favicon-mono.svg`, com as duas ondas brancas. O `main.tsx` troca o favicon junto com as cores, antes do primeiro render.
+  - A imagem do convite não muda: sem logotipo e sem nome, ela já escreve "Resortric" em texto (D-117).
+- **Descartado:** logotipo como componente SVG no React, que ficaria duplicado num arquivo para a ficha impressa; dourado também com tema de cliente, contra o pedido; favicon fixo com dourado (a troca no `main.tsx` custa uma linha).
+- **Testes:** `brand.test.ts` (tema de cliente pela cor ou pelo logotipo e não pelo nome; dourado, logotipo e favicon em cada caso); `AppLayout.test.tsx` e `LoginPage.test.tsx` (rodapé sem dourado com tema; faixa e linha curta em `--brand-accent`); E7a a E7g (cores medidas pelo navegador: fim da faixa e linha do login em dourado sem tema, só com o nome e com tema; favicon e logotipo mono com tema).
+
+## D-127 — Tingimento pela cor principal
+
+- **Decisão (amplia a D-118):** as superfícies neutras levam um pouco da cor principal, do Resortric ou do cliente, com intensidade média. As contas ficam no `brandPalette()` e entram no `:root` pelo `applyBrand()`, como as da D-118:
+  - **fundo das telas** (`--page`): areia com 3,5% da principal (`#f2f2f0` com a cor padrão, `#faf7ec` com `#f5d90a`);
+  - **superfícies suaves:** `--muted`, `--accent` e `--secondary` com 7% (hover, cabeçalho de tabela, botões secundários); `--soft-strong` com 14% (item ativo do menu, chips de ícone);
+  - **bordas e campos** (`--border`, `--input`): cinza `#e7e5e4` com 12% da principal;
+  - **brancos:** cabeçalho do sistema, cartões, menus, diálogos e os campos de formulário (antes transparentes, que mostrariam o fundo tingido).
+- **Texto secundário:** `--muted-foreground` passa de `#737373` para `#57534e`. O cinza anterior caía para 3,2 a 4,3:1 sobre a superfície de 14%; o novo atinge 5,21:1 no pior caso de uma varredura de 4.096 cores e 7,63:1 sobre o branco.
+- **Borda do item ativo:** `--primary-edge` precisa de 3:1 contra o branco e também contra `--soft-strong`, que é o fundo do item ativo; senão, a cor é escurecida até atingir os dois.
+- **Sem mudança:** cores de status (D-120), séries dos gráficos (D-100), anel de foco neutro e as regras de texto e hover da D-118.
+- **Descartado:** tingir por opacidade (`bg-primary/5`), com o contraste dependendo do que estiver atrás; manter o `#737373`, que reprova.
+- **Testes:** varredura de 4.096 cores (texto e texto secundário com pelo menos 4,5:1 sobre `--page`, `--muted` e `--soft-strong`; borda com pelo menos 3:1 contra o branco e `--soft-strong`); valores de referência da cor padrão e de `#f5d90a`; E7a (fundo tingido medido, cabeçalho branco, texto secundário com 4,5:1 sobre o fundo) e E7d (com `#f5d90a`, a linha do item ativo com 3:1 contra o fundo dele e o texto com 4,5:1).

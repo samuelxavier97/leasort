@@ -18,6 +18,9 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-hover: var(--primary-hover);
   --color-primary-edge: var(--primary-edge);
+  --color-page: var(--page);
+  --color-soft-strong: var(--soft-strong);
+  --color-brand-accent: var(--brand-accent);
   --color-status-ok: var(--status-ok);
   --color-status-denied: var(--status-denied);
   --color-secondary: var(--secondary);
@@ -44,27 +47,33 @@
   --status-ok: #15803d;
   --status-denied: #b91c1c;
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  /* Cor principal: padrão do Resortric (D-116). O main.tsx sempre sobrescreve estas quatro com as do
-     tema do cliente (D-115) ou as calculadas para a padrão (D-118); aqui ficam só para o primeiro CSS. */
+  /* Paleta "Lago e ouro" (D-126, D-127). Cabeçalho, cartões e menus continuam brancos; o texto é quase
+     preto, e o secundário, #57534e, atinge 4,5:1 até sobre a superfície de 14% de qualquer cor. */
+  --background: #ffffff;
+  --foreground: #1c1917;
+  --card: #ffffff;
+  --card-foreground: #1c1917;
+  --popover: #ffffff;
+  --popover-foreground: #1c1917;
+  /* Cor principal e tingimento: padrão do Resortric (D-116, D-126). O main.tsx sempre sobrescreve estas
+     com as do tema do cliente (D-115) ou as calculadas para a padrão (D-118, D-127); aqui ficam só para o
+     primeiro CSS. */
   --primary: #1f4e79;
   --primary-foreground: #ffffff;
   --primary-hover: #1b456a;
   --primary-edge: #1f4e79;
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  --page: #f2f2f0;
+  --soft-strong: #dbe0e3;
+  --brand-accent: #b08d57;
+  --secondary: #ebeceb;
+  --secondary-foreground: #1c1917;
+  --muted: #ebeceb;
+  --muted-foreground: #57534e;
+  --accent: #ebeceb;
+  --accent-foreground: #1c1917;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: #cfd3d7;
+  --input: #cfd3d7;
   --ring: oklch(0.708 0 0);
 }
 
@@ -99,7 +108,7 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-page text-foreground;
   }
 }
 
