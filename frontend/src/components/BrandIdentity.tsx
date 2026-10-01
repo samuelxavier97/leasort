@@ -2,7 +2,8 @@ import { currentBrand, PRODUCT_NAME, productLogoUrl, type Brand } from '@/lib/br
 import { cn } from '@/lib/utils'
 
 const SIZES = {
-  header: { logo: 'h-8 max-w-40', name: 'max-w-48 truncate font-semibold', product: 'h-6' },
+  // O nome em texto quebra em até duas linhas; reticências só se passar de duas (pedido na revisão da v0.3.0).
+  header: { logo: 'h-8 max-w-40', name: 'max-w-48 line-clamp-2 leading-tight font-semibold', product: 'h-6' },
   hero: { logo: 'h-20 max-w-72', name: 'text-2xl font-semibold text-balance', product: 'h-10' },
   // Ficha impressa: o logotipo cabe em 12 mm × 45 mm, para a ficha continuar em uma página A4 (D-025).
   sheet: { logo: 'h-12 max-w-48 print:h-[12mm] print:max-w-[45mm]', name: 'font-semibold', product: 'h-6 print:h-[6mm]' },
@@ -25,7 +26,11 @@ export function BrandIdentity({ brand = currentBrand(), size = 'header' }: { bra
     )
   }
   if (brand.resortName) {
-    return <span className={classes.name}>{brand.resortName}</span>
+    return (
+      <span className={classes.name} data-testid="brand-name">
+        {brand.resortName}
+      </span>
+    )
   }
   return <img src={productLogoUrl(brand)} alt={PRODUCT_NAME} className={cn('w-auto', classes.product)} />
 }

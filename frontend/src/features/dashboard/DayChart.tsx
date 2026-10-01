@@ -52,6 +52,8 @@ export function DayChart<K extends string>({
               cursor={{ fill: 'var(--muted)', opacity: 0.4 }}
               labelFormatter={(label) => formatDate(String(label))}
               contentStyle={{ borderRadius: 8, borderColor: 'var(--border)', fontSize: 13 }}
+              // Texto na cor de texto; a cor da série fica só na barra (o azul claro e o cinza não servem de texto).
+              itemStyle={{ color: 'var(--foreground)' }}
             />
             {/* Ordem fixa das séries e texto na cor de texto; a cor da série fica só no marcador. */}
             <Legend

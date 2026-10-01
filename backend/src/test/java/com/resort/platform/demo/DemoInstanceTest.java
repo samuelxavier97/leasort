@@ -63,6 +63,8 @@ class DemoInstanceTest {
             "DEMO_PROSPECTOR_PASSWORD", "senha-prospector-demo",
             "DEMO_GATE_PASSWORD", "senha-portaria-demo",
             "DEMO_HOST_PASSWORD", "senha-anfitriao-demo");
+    /** Nome do ADMIN da demonstração, informado na carga (D-125); só fictício no teste. */
+    static final String ADMIN_NAME = "Carlos Eduardo Fictício";
     static final List<String> TABLES = List.of("users", "prospectors", "leads", "visits", "visit_companions", "invitations",
             "access_records", "access_record_companions");
 
@@ -89,6 +91,7 @@ class DemoInstanceTest {
 
     private int run(String... args) {
         Map<String, String> env = new HashMap<>(PASSWORDS);
+        env.put("DEMO_ADMIN_NAME", ADMIN_NAME);
         env.put("DEMO_INSTANCE", "true");
         env.put("DB_URL", postgres.getJdbcUrl());
         env.put("DB_USER", APP);
@@ -208,6 +211,9 @@ class DemoInstanceTest {
             assertThat(me.get("role").asString()).isEqualTo(entry.getValue());
             assertThat(me.get("mustChangePassword").asBoolean()).isFalse();
         }
+        // O ADMIN da demonstração tem o nome informado na carga, para a saudação do dashboard.
+        assertThat(login(new HttpBrowser(port), DemoDataPlan.ADMIN_EMAIL, PASSWORDS.get("DEMO_ADMIN_PASSWORD")).get("name").asString())
+                .isEqualTo(ADMIN_NAME);
     }
 
     @Test
@@ -241,11 +247,14 @@ class DemoInstanceTest {
                         JOIN visits v ON v.id = i.visit_id JOIN leads l ON l.id = v.lead_id
                         WHERE v.scheduled_date = :today AND i.status = 'ACTIVE' ORDER BY v.created_at""")
                 .param("today", today).query().listOfRows();
-        // Depois das 8h10 uma das duas já entrou na carga (D-128); a outra fica para a Portaria.
+        // Depois das 8h10, 3 ou 4 das 5 ou 6 de hoje já entraram na carga; 2 ficam para a Portaria.
         long arrived = owner.sql("SELECT count(*) FROM visits WHERE scheduled_date = :today AND status = 'COMPLETED'")
                 .param("today", today).query(Long.class).single();
-        assertThat(todays).hasSize(DemoDataPlan.VISITS_TODAY - (int) arrived);
-        assertThat(arrived).isBetween(0L, 1L);
+        assertThat(arrived == 0 ? (long) todays.size() : arrived + todays.size()).isBetween(5L, 6L);
+        if (arrived > 0) {
+            assertThat(todays).hasSize(DemoDataPlan.PENDING_TODAY);
+            assertThat(arrived).isBetween(3L, 4L);
+        }
 
         HttpBrowser gate = new HttpBrowser(port);
         login(gate, DemoDataPlan.GATE_EMAIL, PASSWORDS.get("DEMO_GATE_PASSWORD"));
@@ -274,7 +283,8 @@ class DemoInstanceTest {
         }
         // O dashboard da D-128 com a carga: visitas de hoje, comparação com base nos 30 e nos 90 dias, o
         // desempenho dos 8 Prospectores e os cinco motivos de negativa.
-        assertThat(summary.get("todayVisits")).hasSize(DemoDataPlan.VISITS_TODAY);
+        assertThat(summary.get("todayVisits")).hasSize(summary.get("visitsToday").asInt());
+        assertThat(summary.get("visitsToday").asInt()).isBetween(5, 6);
         assertThat(summary.get("todayVisits").valueStream().map(v -> v.get("prospectorName").asString())).allMatch(n -> !n.isBlank());
         assertThat(summary.get("previous").get("completedVisits").asLong()).isPositive();
         LocalDate today = LocalDate.parse(summary.get("today").asString());

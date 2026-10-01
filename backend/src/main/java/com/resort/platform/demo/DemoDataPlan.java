@@ -33,7 +33,8 @@ final class DemoDataPlan {
     static final long SEED = 20260930L;
     static final int HISTORY_DAYS = 180;
     static final int FUTURE_DAYS = 10;
-    static final int VISITS_TODAY = 2;
+    /** Visitas de hoje que ficam para a Portaria liberar ao vivo; as demais (3 ou 4) já entraram. */
+    static final int PENDING_TODAY = 2;
     static final String EMAIL_DOMAIN = "@example.com";
 
     static final String ADMIN_EMAIL = "admin.demo" + EMAIL_DOMAIN;
@@ -106,6 +107,7 @@ final class DemoDataPlan {
 
     private final LocalDate today;
     private final Instant now;
+    private final String adminName;
     private final ZoneId zone;
     private final Random random;
     private final InvitationCodeGenerator codes;
@@ -127,7 +129,8 @@ final class DemoDataPlan {
 
     private record Chain(DemoVisit visit, DemoInvitation invitation, List<DemoCompanion> companions, DemoAccess entry) {}
 
-    private DemoDataPlan(LocalDate today, Instant now, ZoneId zone, long seed, RandomGenerator codeRandom) {
+    private DemoDataPlan(LocalDate today, Instant now, ZoneId zone, long seed, RandomGenerator codeRandom, String adminName) {
+        this.adminName = adminName;
         this.today = today;
         this.now = now;
         this.zone = zone;
@@ -135,9 +138,12 @@ final class DemoDataPlan {
         this.codes = new InvitationCodeGenerator(codeRandom);
     }
 
-    /** Gera os dados; {@code codeRandom} sorteia os códigos dos convites (na carga, um {@code SecureRandom}). */
-    static DemoData generate(LocalDate today, Instant now, ZoneId zone, long seed, RandomGenerator codeRandom) {
-        return new DemoDataPlan(today, now, zone, seed, codeRandom).build();
+    /**
+     * Gera os dados; {@code codeRandom} sorteia os códigos dos convites (na carga, um {@code SecureRandom}), e
+     * {@code adminName} é o nome do ADMIN da demonstração, informado na carga como as senhas (D-125).
+     */
+    static DemoData generate(LocalDate today, Instant now, ZoneId zone, long seed, RandomGenerator codeRandom, String adminName) {
+        return new DemoDataPlan(today, now, zone, seed, codeRandom, adminName).build();
     }
 
     /** Visitas por dia: em média 3 de segunda a sexta e 11 no sábado e no domingo (D-125). */
@@ -149,7 +155,7 @@ final class DemoDataPlan {
     private DemoData build() {
         Instant staffSince = at(today.minusDays(HISTORY_DAYS + 40), 9 * 60);
         DemoUser gate = user("Portaria (demonstração)", GATE_EMAIL, Role.GATE, true, staffSince);
-        user("Administrador (demonstração)", ADMIN_EMAIL, Role.ADMIN, true, staffSince);
+        user(adminName, ADMIN_EMAIL, Role.ADMIN, true, staffSince);
         user("Anfitrião (demonstração)", HOST_EMAIL, Role.HOST, true, staffSince);
         for (int i = 0; i < SALES_TEAM.size(); i++) {
             Staff staff = SALES_TEAM.get(i);
@@ -164,12 +170,13 @@ final class DemoDataPlan {
                 pastVisit(day);
             }
         }
-        // Hoje: as duas com acompanhantes; a primeira já entrou, se a carga roda depois das 8h10 (o quadro de
-        // hoje mostra uma chegada), e a outra fica para a Portaria liberar ao vivo.
-        boolean arrived = !beforeNow(at(today, 9 * 60)).isBefore(at(today, 8 * 60));
-        for (int i = 0; i < VISITS_TODAY; i++) {
-            if (i == 0 && arrived) {
-                chain(today, pickProspector(), VisitStatus.COMPLETED, null, 2);
+        // Hoje: 5 ou 6 visitas, perto da média do histórico. Se a carga roda depois das 8h10, 3 ou 4 já entraram
+        // (o quadro de hoje mostra as chegadas), e 2, com acompanhantes, ficam para a Portaria liberar ao vivo.
+        int todayCount = 5 + random.nextInt(2);
+        boolean arrivals = !beforeNow(at(today, 9 * 60)).isBefore(at(today, 8 * 60));
+        for (int i = 0; i < todayCount; i++) {
+            if (arrivals && i < todayCount - PENDING_TODAY) {
+                chain(today, pickProspector(), VisitStatus.COMPLETED, null, companionCount());
             } else {
                 upcomingVisit(today, 2);
             }
@@ -246,8 +253,8 @@ final class DemoDataPlan {
         LeadStatus leadStatus = LeadStatus.VISIT_SCHEDULED;
         switch (status) {
             case COMPLETED -> {
-                // Hoje, a entrada fica no passado (no máximo 10 minutos antes da carga).
-                entryAt = beforeNow(at(day, 9 * 60 + random.nextInt(450)));
+                // Hoje, as entradas se espalham das 8h até 10 minutos antes da carga (no máximo 17h).
+                entryAt = day.equals(today) ? todayEntry() : at(day, 9 * 60 + random.nextInt(450));
                 updated = entryAt;
                 invitationStatus = InvitationStatus.USED;
                 leadStatus = LeadStatus.VISITED;
@@ -340,6 +347,12 @@ final class DemoDataPlan {
             family.add(companion);
         }
         return family;
+    }
+
+    private Instant todayEntry() {
+        Instant opening = at(today, 8 * 60);
+        long window = Duration.between(opening, beforeNow(at(today, 17 * 60))).toMinutes();
+        return opening.plus(Duration.ofMinutes(random.nextLong(Math.max(1, window))));
     }
 
     private int companionCount() {

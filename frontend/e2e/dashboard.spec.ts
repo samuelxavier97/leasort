@@ -47,12 +47,17 @@ async function arrivalAndDenial(world: World) {
   return { prospector, leadName }
 }
 
-async function adminDashboard(world: World, theme: Theme, viewport?: { width: number; height: number }): Promise<Page> {
+async function adminDashboard(
+  world: World,
+  theme: Theme,
+  viewport?: { width: number; height: number },
+  admin: { email: string; password: string } = adminCredentials(),
+): Promise<Page> {
   const context = await world.newContext('ADMIN')
   await applyTheme(context, theme)
   const page = await context.newPage()
   if (viewport) await page.setViewportSize(viewport)
-  const { email, password } = adminCredentials()
+  const { email, password } = admin
   await login(page, email, password)
   await expect(page).toHaveURL('/dashboard')
   await expect(page.getByRole('region', { name: 'Desempenho por Prospector' })).toBeVisible()
@@ -69,9 +74,11 @@ test('E10: dashboard do ADMIN com faixa, chegada e negativa de hoje, menu em uma
   world,
 }) => {
   const { prospector, leadName } = await arrivalAndDenial(world)
+  // Um nome comum, como o do ADMIN da demonstração (D-125): cabe inteiro no cabeçalho e não quebra o menu.
+  const carlos = await world.createAdmin('Carlos Eduardo Silva')
 
   for (const theme of THEMES) {
-    const page = await adminDashboard(world, theme)
+    const page = await adminDashboard(world, theme, undefined, carlos)
     expect(page.viewportSize()?.width).toBe(1280)
 
     // Menu do ADMIN numa linha só: os itens e o submenu "Administração" na mesma altura (D-128).
@@ -80,6 +87,11 @@ test('E10: dashboard do ADMIN com faixa, chegada e negativa de hoje, menu em uma
     const rows = await nav.evaluate((element) => new Set([...element.children].map((child) => Math.round(child.getBoundingClientRect().top))).size)
     expect(rows, `menu numa linha (${theme.color || 'sem tema'})`).toBe(1)
     expect((await page.getByRole('banner').boundingBox())!.height).toBeLessThanOrEqual(72)
+    const userName = page.getByTestId('header-user-name')
+    await expect(userName).toHaveText('Carlos Eduardo Silva')
+    expect(await userName.evaluate((element) => element.scrollWidth <= element.clientWidth), 'nome sem corte').toBe(true)
+    // A saudação usa o primeiro nome.
+    await expect(page.getByTestId('dashboard-band').getByText(/^(Bom dia|Boa tarde|Boa noite), Carlos$/)).toBeVisible()
 
     // Texto sobre a faixa, inclusive o secundário, com 4,5:1 (D-118).
     const band = page.getByTestId('dashboard-band')
@@ -109,6 +121,29 @@ test('E10: dashboard do ADMIN com faixa, chegada e negativa de hoje, menu em uma
   const invalid = denials.getByRole('row').filter({ hasText: 'Código inválido' })
   expect(Number(await invalid.getByRole('cell').nth(1).textContent())).toBeGreaterThanOrEqual(1)
   await expect(page.getByText('Acessos por dia')).toHaveCount(0)
+
+  // RESORT_NAME em texto: quebra em até duas linhas, com reticências só depois da segunda; o menu continua
+  // numa linha a 1280 px, com o nome comum do ADMIN inteiro.
+  for (const [name, clipped] of [
+    [FICTIONAL_RESORT, false],
+    ['Resort Fictício das Águas Termais, Parque Aquático e Centro de Convenções da Serra Azul', true],
+  ] as const) {
+    const named = await adminDashboard(world, { name, color: '', logo: false }, undefined, carlos)
+    const brandName = named.getByRole('banner').getByTestId('brand-name')
+    await expect(brandName).toHaveText(name)
+    const box = await brandName.evaluate((element) => ({
+      lines: Math.round(element.clientHeight / parseFloat(getComputedStyle(element).lineHeight)),
+      clipped: element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1,
+    }))
+    expect(box.lines, name).toBeLessThanOrEqual(2)
+    expect(box.clipped, name).toBe(clipped)
+    const rows = await named
+      .getByRole('navigation', { name: 'Menu principal' })
+      .evaluate((element) => new Set([...element.children].map((child) => Math.round(child.getBoundingClientRect().top))).size)
+    expect(rows, `menu numa linha com "${name}"`).toBe(1)
+    expect((await named.getByRole('banner').boundingBox())!.height).toBeLessThanOrEqual(72)
+    expect(await named.getByTestId('header-user-name').evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true)
+  }
 
   // Celular: a faixa e os cartões sem rolagem horizontal.
   const mobile = await adminDashboard(world, THEMES[2], { width: 390, height: 844 })

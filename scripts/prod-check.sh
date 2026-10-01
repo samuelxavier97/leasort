@@ -707,6 +707,7 @@ echo "==> Instalação de demonstração: carga e recarga (D-125)"
 DEMO_ENV="$WORK/env.demo"
 cp "$ENV_FILE" "$DEMO_ENV"
 echo "DEMO_INSTANCE=true" >>"$DEMO_ENV"
+export DEMO_ADMIN_NAME="Carlos Eduardo Fictício"
 export DEMO_ADMIN_PASSWORD="demo-admin-$(secret)" DEMO_PROSPECTOR_PASSWORD="demo-prospector-$(secret)"
 export DEMO_GATE_PASSWORD="demo-portaria-$(secret)" DEMO_HOST_PASSWORD="demo-anfitriao-$(secret)"
 compose_demo() { docker compose -p "$PROJECT" -f "$ROOT/docker-compose.prod.yml" --project-directory "$ROOT" --env-file "$DEMO_ENV" "$@"; }
@@ -771,8 +772,9 @@ check "recarga de uma instalação de demonstração (saída $status)" \
   bash -c "[ $status = 0 ] && grep -q 'demo-reset: concluído' '$WORK/demo-7.log'"
 check "depois da recarga, o banco tem de novo só a demonstração e o ADMIN inicial, com a auditoria do zero" \
   test "$(psql_q "SELECT count(*) FROM users")/$(psql_q "SELECT count(*) FROM audit_logs WHERE metadata ->> 'source' IS DISTINCT FROM 'DEMO'")" = "12/1"
-check "depois da recarga, o ADMIN da demonstração entra" \
-  bash -c "grep -q '\"role\":\"ADMIN\"' <<<'$(demo_login "$WORK/demo.jar" admin.demo@example.com "$DEMO_ADMIN_PASSWORD")'"
+check "depois da recarga, o ADMIN da demonstração entra, com o nome informado na carga" \
+  bash -c "grep -q '\"role\":\"ADMIN\"' <<<'$(demo_login "$WORK/demo.jar" admin.demo@example.com "$DEMO_ADMIN_PASSWORD")' &&
+           grep -q '\"name\":\"$DEMO_ADMIN_NAME\"' <<<'$(tls -b "$WORK/demo.jar" "$BASE/api/auth/me")'"
 CREATED="$(tls -b "$WORK/demo.jar" -c "$WORK/demo.jar" -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
   -H "X-XSRF-TOKEN: $(awk '$6 == "XSRF-TOKEN" { print $7 }' "$WORK/demo.jar" | tail -1)" \
   --data '{"name":"Pessoa de Verdade","email":"pessoa@empresa.local","role":"HOST"}' "$BASE/api/users")"
