@@ -154,14 +154,28 @@ describe('AppLayout — identidade do cliente (D-117)', () => {
     renderApp('/usuarios')
     await headerIdentity()
     const menu = screen.getByRole('navigation', { name: 'Menu principal' })
-    const active = within(menu).getByRole('link', { name: 'Usuários' })
+    // Usuários fica no submenu "Administração" (D-128): o botão dele mostra que a tela atual está lá dentro.
+    const group = within(menu).getByRole('button', { name: 'Administração' })
+    expect(group).toHaveClass('bg-soft-strong', 'font-semibold', 'border-primary-edge')
+    const user = userEvent.setup()
+    await user.click(group)
+    const active = await screen.findByRole('menuitem', { name: 'Usuários' })
     expect(active).toHaveAttribute('aria-current', 'page')
     expect(active).toHaveClass('bg-soft-strong', 'font-semibold', 'border-primary-edge')
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Exportações', 'Usuários', 'Auditoria'])
+    await user.keyboard('{Escape}')
     const inactive = within(menu).getByRole('link', { name: 'Leads' })
     expect(inactive).not.toHaveClass('font-semibold')
     expect(inactive).not.toHaveClass('border-primary-edge')
     // A linha usa a borda da D-118: escurecida até 3:1 para a cor clara, não a própria cor.
     expect(document.documentElement.style.getPropertyValue('--primary-edge')).not.toBe('#f5d90a')
+  })
+
+  it('L10: o PROSPECTOR não tem o submenu "Administração" (D-128)', async () => {
+    mockFetch((_method, url) => (url === '/api/auth/me' ? { body: me('PROSPECTOR') } : undefined))
+    renderApp('/perfil')
+    const menu = await screen.findByRole('navigation', { name: 'Menu principal' })
+    expect(within(menu).queryByRole('button', { name: 'Administração' })).not.toBeInTheDocument()
   })
 })
 

@@ -46,9 +46,9 @@ class DashboardSeriesTest extends DashboardTestSupport {
         assertThat(rows(visitsByDay(other.client(), range))).allMatch(row -> row.equals(List.of(0L, 0L, 0L, 0L)));
     }
 
-    // D9
+    // D9 (D-129): negativas por motivo, pela data da tentativa no fuso da operação.
     @Test
-    void accessByDayCountsAuthorizedByEntryAndDeniedByAttempt() throws Exception {
+    void denialsCountEachDeniedAttemptByReasonAndPeriod() throws Exception {
         LocalDate day = uniqueDay();
         ProspectorSession me = loggedInProspector();
         ApiClient admin = admin();
@@ -56,26 +56,41 @@ class DashboardSeriesTest extends DashboardTestSupport {
         Booking entered = book(me, day.minusDays(1), 0);
         enter(gate, entered, at(day.minusDays(1), 18, 0));
         Booking cancelled = book(me, day, 0);
-        String cancelledCode = jdbc.sql("SELECT code FROM invitations WHERE id = :i").param("i", cancelled.invitationId())
-                .query(String.class).single().trim();
+        String cancelledCode = code(cancelled);
+        String usedCode = code(entered);
         cancel(me, cancelled);
         clock.set(at(day, 10, 0));
         gate.post("/api/access/validate", Map.of("code", cancelledCode)).andExpect(jsonPath("$.denialReason").value("CANCELLED"));
+        gate.post("/api/access/validate", Map.of("code", cancelledCode)).andExpect(jsonPath("$.denialReason").value("CANCELLED"));
+        gate.post("/api/access/validate", Map.of("code", usedCode)).andExpect(jsonPath("$.denialReason").value("ALREADY_USED"));
         gate.post("/api/access/validate", Map.of("code", "ZZZZZZZZZZ")).andExpect(jsonPath("$.denialReason").value("INVALID_CODE"));
-        String range = period(day.minusDays(2), day);
+        // Uma tentativa negada às 23:59 do dia anterior conta no dia anterior.
+        clock.set(at(day.minusDays(1), 23, 59));
+        gate.post("/api/access/validate", Map.of("code", "YYYYYYYYYY")).andExpect(jsonPath("$.denialReason").value("INVALID_CODE"));
+        clock.set(at(day, 12, 0));
+        String scope = "prospectorId=" + me.prospector().getId();
 
-        JsonNode all = accessByDay(admin, range);
-        assertThat(all.get("days").valueStream().map(d -> d.get("date").asString()).toList())
-                .containsExactly(day.minusDays(2).toString(), day.minusDays(1).toString(), day.toString());
-        assertThat(day(all, day.minusDays(2)).get("authorized").asLong() + day(all, day.minusDays(2)).get("denied").asLong()).isZero();
-        assertThat(day(all, day.minusDays(1)).get("authorized").asLong()).isEqualTo(1);
-        assertThat(day(all, day).get("denied").asLong()).isEqualTo(2);
+        JsonNode mine = denials(admin, period(day, day), scope);
+        assertThat(mine.get("from").asString()).isEqualTo(day.toString());
+        assertThat(mine.get("reasons").valueStream().map(r -> r.get("reason").asString()).toList())
+                .containsExactly("CANCELLED", "ALREADY_USED", "INVALID_CODE", "EXPIRED", "WRONG_DATE");
+        assertThat(reason(mine, "CANCELLED")).isEqualTo(2);
+        assertThat(reason(mine, "ALREADY_USED")).isEqualTo(1);
+        // Com o filtro, a negativa sem convite sai.
+        assertThat(reason(mine, "INVALID_CODE")).isZero();
+        assertThat(mine.get("total").asLong()).isEqualTo(3);
 
-        // Com o filtro, só o que está ligado a um convite do Prospector: a negativa por código inválido sai.
-        JsonNode mine = accessByDay(admin, range, "prospectorId=" + me.prospector().getId());
-        assertThat(day(mine, day.minusDays(1)).get("authorized").asLong()).isEqualTo(1);
-        assertThat(day(mine, day).get("denied").asLong()).isEqualTo(1);
-        assertThat(day(mine, day).get("authorized").asLong()).isZero();
+        JsonNode all = denials(admin, period(day, day));
+        assertThat(reason(all, "INVALID_CODE")).isGreaterThanOrEqualTo(1);
+        assertThat(all.get("total").asLong()).isEqualTo(all.get("reasons").valueStream().mapToLong(r -> r.get("count").asLong()).sum());
+        assertThat(reason(denials(admin, period(day.minusDays(1), day.minusDays(1))), "INVALID_CODE")).isGreaterThanOrEqualTo(1);
+        // Fora do período, nada do Prospector.
+        assertThat(denials(admin, period(day.minusDays(3), day.minusDays(1)), scope).get("total").asLong()).isZero();
+    }
+
+    private String code(Booking booking) {
+        return jdbc.sql("SELECT code FROM invitations WHERE id = :i").param("i", booking.invitationId())
+                .query(String.class).single().trim();
     }
 
     // D10
@@ -95,9 +110,6 @@ class DashboardSeriesTest extends DashboardTestSupport {
         String scope = "prospectorId=" + me.prospector().getId();
         String range = period(day, next);
 
-        JsonNode access = accessByDay(admin, range, scope);
-        assertThat(day(access, day).get("authorized").asLong()).isEqualTo(1);
-        assertThat(day(access, next).get("authorized").asLong()).isEqualTo(1);
         JsonNode visits = visitsByDay(admin, range, scope);
         assertThat(day(visits, day).get("completed").asLong()).isEqualTo(1);
         assertThat(day(visits, day).get("scheduled").asLong()).isEqualTo(1);

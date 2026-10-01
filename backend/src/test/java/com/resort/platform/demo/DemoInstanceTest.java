@@ -241,7 +241,11 @@ class DemoInstanceTest {
                         JOIN visits v ON v.id = i.visit_id JOIN leads l ON l.id = v.lead_id
                         WHERE v.scheduled_date = :today AND i.status = 'ACTIVE' ORDER BY v.created_at""")
                 .param("today", today).query().listOfRows();
-        assertThat(todays).hasSize(DemoDataPlan.VISITS_TODAY);
+        // Depois das 8h10 uma das duas já entrou na carga (D-128); a outra fica para a Portaria.
+        long arrived = owner.sql("SELECT count(*) FROM visits WHERE scheduled_date = :today AND status = 'COMPLETED'")
+                .param("today", today).query(Long.class).single();
+        assertThat(todays).hasSize(DemoDataPlan.VISITS_TODAY - (int) arrived);
+        assertThat(arrived).isBetween(0L, 1L);
 
         HttpBrowser gate = new HttpBrowser(port);
         login(gate, DemoDataPlan.GATE_EMAIL, PASSWORDS.get("DEMO_GATE_PASSWORD"));
@@ -268,6 +272,19 @@ class DemoInstanceTest {
         for (String card : List.of("totalLeads", "scheduledVisits", "activeInvitations", "completedVisits", "noShows", "cancellations", "entries")) {
             assertThat(summary.get(card).asLong()).as(card).isPositive();
         }
+        // O dashboard da D-128 com a carga: visitas de hoje, comparação com base nos 30 e nos 90 dias, o
+        // desempenho dos 8 Prospectores e os cinco motivos de negativa.
+        assertThat(summary.get("todayVisits")).hasSize(DemoDataPlan.VISITS_TODAY);
+        assertThat(summary.get("todayVisits").valueStream().map(v -> v.get("prospectorName").asString())).allMatch(n -> !n.isBlank());
+        assertThat(summary.get("previous").get("completedVisits").asLong()).isPositive();
+        LocalDate today = LocalDate.parse(summary.get("today").asString());
+        JsonNode ninety = json.readTree(admin.get("/api/dashboard/summary?from=" + today.minusDays(89) + "&to=" + today).body());
+        assertThat(ninety.get("previous").get("completedVisits").asLong()).isPositive();
+        assertThat(ninety.get("previous").get("entries").asLong()).isPositive();
+        JsonNode performance = json.readTree(admin.get("/api/dashboard/prospector-performance").body());
+        assertThat(performance.get("prospectors")).hasSize(8);
+        JsonNode denials = json.readTree(admin.get("/api/dashboard/denials?from=" + today.minusDays(179) + "&to=" + today).body());
+        assertThat(denials.get("reasons").valueStream()).hasSize(5).allMatch(r -> r.get("count").asLong() > 0);
     }
 
     // 4. A proteção da recarga pelo conteúdo.

@@ -9,7 +9,8 @@ const cases: { role: Role; landing: string; heading: string; links: string[] }[]
     role: 'ADMIN',
     landing: '/dashboard',
     heading: 'Dashboard',
-    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Chegadas', 'Acessos', 'Exportações', 'Usuários', 'Auditoria'],
+    // D-128: Exportações, Usuários e Auditoria ficam no submenu "Administração" do computador.
+    links: ['Dashboard', 'Leads', 'Prospectores', 'Visitas', 'Convites', 'Chegadas', 'Acessos'],
   },
     // W8 e C11: §16.1 — o PROSPECTOR ganha Agenda, Convites e Histórico; o ADMIN ganha Visitas e Convites.
   {

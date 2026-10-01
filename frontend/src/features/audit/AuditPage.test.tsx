@@ -55,7 +55,7 @@ describe('XF3 — tabela de auditoria', () => {
       'Data e hora', 'Usuário', 'Ação', 'Entidade', 'Detalhes', 'IP',
     ])
     expect(rows()).toEqual([
-      ['24/09/2026, 00:15', 'Sistema', 'Não compareceu', 'Visitaaaaabbbb', 'Lead: l-1', '—'],
+      ['24/09/2026, 00:15', 'Sistema', 'Sem comparecimento', 'Visitaaaaabbbb', 'Lead: l-1', '—'],
       ['24/09/2026, 10:05', 'Administrador Fictício', 'Status do Lead alterado', 'Lead0f8b2c1e', 'De: NovoPara: Contatado', '10.0.0.7'],
     ])
   })

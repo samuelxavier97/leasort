@@ -121,8 +121,21 @@ abstract class DashboardTestSupport extends IntegrationTestSupport {
         return json(client.get("/api/dashboard/visits-by-day" + query(parts)).andExpect(status().isOk()));
     }
 
-    JsonNode accessByDay(ApiClient client, String... parts) throws Exception {
-        return json(client.get("/api/dashboard/access-by-day" + query(parts)).andExpect(status().isOk()));
+    JsonNode denials(ApiClient client, String... parts) throws Exception {
+        return json(client.get("/api/dashboard/denials" + query(parts)).andExpect(status().isOk()));
+    }
+
+    JsonNode performance(ApiClient client, String... parts) throws Exception {
+        return json(client.get("/api/dashboard/prospector-performance" + query(parts)).andExpect(status().isOk()));
+    }
+
+    /** Quantidade de um motivo na resposta das negativas. */
+    static long reason(JsonNode denials, String reason) {
+        return denials.get("reasons").valueStream()
+                .filter(r -> r.get("reason").asString().equals(reason))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("motivo ausente: " + reason))
+                .get("count").asLong();
     }
 
     /** Linha de uma série pela data. */

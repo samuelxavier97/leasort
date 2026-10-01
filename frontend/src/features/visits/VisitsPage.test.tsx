@@ -64,7 +64,7 @@ describe('W9 — Agenda e Histórico', () => {
       expect(rowTexts()).toEqual([
         '20/10/2026Lead FictícioCancelada0Prospector Fictício',
         '20/09/2026Lead FictícioAgendada0Prospector Fictício',
-        '01/08/2026Lead FictícioNão compareceu0Prospector Fictício',
+        '01/08/2026Lead FictícioSem comparecimento0Prospector Fictício',
       ]),
     )
     expect(requested).toEqual(['/api/visits?page=0&order=desc&scope=history'])

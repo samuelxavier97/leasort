@@ -351,15 +351,15 @@ cd /opt/resort && scripts/demo-load.sh .env.prod
 - O ADMIN inicial continua sendo o do operador.
 
 **O que a carga cria.** Relativo ao dia da carga:
-- 7 semanas de histórico e 10 dias à frente, com em média 3 visitas por dia de segunda a sexta e 11 no sábado e no domingo;
+- 180 dias de histórico e 10 dias à frente, com em média 3 visitas por dia de segunda a sexta e 11 no sábado e no domingo;
 - 8 Prospectores com desempenhos diferentes;
 - visitas realizadas, sem comparecimento e canceladas;
 - negativas na Portaria com os cinco motivos;
-- 2 visitas para hoje, uma delas com acompanhantes.
+- 2 visitas para hoje, as duas com acompanhantes: se a carga roda depois das 8h10, uma já aparece como chegada no dashboard, e a outra fica para a Portaria liberar ao vivo.
 
 Leads e acompanhantes não têm CPF, os telefones usam o DDD 00 e os e-mails são de `example.com`.
 
-**Recarregar antes de cada apresentação.** As visitas de hoje só valem no dia da carga: o job das 00:15 marca como não comparecidas as que ficaram agendadas. No dia da apresentação:
+**Recarregar antes de cada apresentação.** As visitas de hoje só valem no dia da carga: o job das 00:15 marca como sem comparecimento as que ficaram agendadas. No dia da apresentação:
 
 ```bash
 cd /opt/resort && scripts/demo-reset.sh .env.prod
